@@ -7,6 +7,7 @@ import 'extensions/inspect_ext.dart';
 import 'extensions/long_press_ext.dart';
 import 'extensions/screenshot_ext.dart';
 import 'extensions/snapshot_ext.dart';
+import 'extensions/scroll_ext.dart';
 import 'extensions/swipe_ext.dart';
 import 'extensions/tap_ext.dart';
 import 'navigation/route_tracker.dart';
@@ -38,6 +39,7 @@ class FlutterQAProbe {
     _register(SwipeExtension.name, SwipeExtension.handle);
     _register(EnterTextExtension.name, EnterTextExtension.handle);
     _register(ClearTextExtension.name, ClearTextExtension.handle);
+    _register(ScrollExtension.name, ScrollExtension.handle);
   }
 
   static void _register(
