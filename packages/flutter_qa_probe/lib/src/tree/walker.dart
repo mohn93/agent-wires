@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
 import 'raw_node.dart';
 
@@ -19,7 +21,7 @@ class ElementTreeWalker {
       siblingIndex: siblingIndex,
       visibleText: _extractText(e.widget),
       bounds: _extractBounds(e),
-      creationLocation: _extractCreationLocation(e.widget),
+      creationLocation: _extractCreationLocation(e),
     ));
     var idx = 0;
     e.visitChildren((child) {
@@ -42,13 +44,24 @@ class ElementTreeWalker {
     return null;
   }
 
-  static String? _extractCreationLocation(Widget w) {
-    // `Widget` has a `_location` field set by --track-widget-creation.
-    // Accessed via toString of the debugFillProperties / via internal API.
-    // For now, use the documented `DiagnosticableTreeMixin` route.
-    // ignore: unused_local_variable
-    final diag = w.toDiagnosticsNode();
-    // Real implementation goes through Widget._location reflection in next task.
-    return null;
+  static String? _extractCreationLocation(Element e) {
+    // WidgetInspectorService.getDetailsSubtree provides creationLocation when
+    // --track-widget-creation is enabled (the default for flutter test and debug).
+    const group = '_qa_probe_cl';
+    final inspector = WidgetInspectorService.instance;
+    final nodeId = inspector.toId(e, group);
+    if (nodeId == null) return null;
+    try {
+      final json = inspector.getDetailsSubtree(nodeId, group);
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      final loc = map['creationLocation'] as Map<String, dynamic>?;
+      if (loc == null) return null;
+      final file = (loc['file'] as String).replaceFirst('file://', '');
+      return '$file:${loc['line']}:${loc['column']}';
+    } catch (_) {
+      return null;
+    } finally {
+      inspector.disposeGroup(group);
+    }
   }
 }
