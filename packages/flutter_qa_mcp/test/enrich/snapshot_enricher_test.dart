@@ -52,11 +52,14 @@ void main() {
     expect((enriched['unresolved'] as List), isEmpty);
     final elements = enriched['elements'] as List;
     expect(elements, hasLength(1));
-    expect((elements.first as Map)['label'], 'Remove Item');
-    expect((elements.first as Map)['label_source'], 'human');
+    final el = elements.first as Map;
+    expect(el['label'], 'Remove Item');
+    expect(el['label_source'], 'human');
+    // Fix 2: persistent_label is set for promoted unresolved elements.
+    expect(el['persistent_label'], 'Remove Item');
   });
 
-  test('elements with existing label get their human_label overridden if present', () {
+  test('elements with existing label get persistent_label added without overwriting label', () {
     final raw = {
       'elements': [
         {
@@ -74,7 +77,33 @@ void main() {
     map.upsert(MapEntry(fingerprint: 'f_z', humanLabel: 'Submit'));
     final enriched = SnapshotEnricher.enrich(raw: raw, map: map);
     final el = (enriched['elements'] as List).first as Map;
-    expect(el['label'], 'Submit');
-    expect(el['label_source'], 'human');
+    // Fix 2: original label and label_source are preserved; persistent_label is added.
+    expect(el['label'], 'Go');
+    expect(el['label_source'], 'text_child');
+    expect(el['persistent_label'], 'Submit');
+  });
+
+  test('dismissed fingerprint is excluded from both elements and unresolved', () {
+    final raw = {
+      'route': '/home',
+      'viewport': {'w': 400, 'h': 800},
+      'elements': [],
+      'unresolved': [
+        {
+          'id': 'e_d',
+          'fingerprint': 'f_d',
+          'widget_type': 'GestureDetector',
+          'role': 'tappable',
+          'label_source': 'none',
+          'enabled': true,
+        }
+      ],
+    };
+    final map = SemanticMap(projectRoot: '.');
+    map.upsert(MapEntry(fingerprint: 'f_d', dismissed: true));
+    final enriched = SnapshotEnricher.enrich(raw: raw, map: map);
+    // Fix 3: dismissed element disappears entirely from output.
+    expect((enriched['unresolved'] as List), isEmpty);
+    expect((enriched['elements'] as List), isEmpty);
   });
 }

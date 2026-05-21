@@ -50,17 +50,24 @@ List<Tool> perceptionTools(VmClient vm, SemanticMap map) => [
           if (!annotated) {
             return _toolResult(jsonEncode(shotJson));
           }
-          final snapJson = await vm.callExtension('ext.qa.snapshot');
-          final elements = ((snapJson['elements'] as List?) ?? const [])
+          final snapRaw = await vm.callExtension('ext.qa.snapshot');
+          final enriched = SnapshotEnricher.enrich(raw: snapRaw, map: map);
+          final elements = ((enriched['elements'] as List?) ?? const [])
+              .cast<Map<String, dynamic>>();
+          final unresolvedList = ((enriched['unresolved'] as List?) ?? const [])
               .cast<Map<String, dynamic>>();
           final pngB64 = shotJson['data_base64'] as String;
-          final annotatedPng =
-              SomAnnotator.annotate(pngBase64: pngB64, elements: elements);
+          final annotatedPng = SomAnnotator.annotate(
+            pngBase64: pngB64,
+            elements: elements,
+            unresolved: unresolvedList,
+          );
           return _toolResult(jsonEncode({
             ...shotJson,
             'data_base64': annotatedPng,
             'annotated': true,
             'element_count': elements.length,
+            'unresolved_count': unresolvedList.length,
           }));
         },
       ),
