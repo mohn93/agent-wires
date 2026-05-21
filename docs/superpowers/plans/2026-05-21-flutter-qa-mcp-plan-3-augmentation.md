@@ -1802,7 +1802,7 @@ git commit -m "test(e2e): augmentation flow — label_element promotes unresolve
 
 After all tasks land:
 
-- MCP tool count: **19** (3 perception + 7 action + 3 sync + 3 memory + 1 dashboard subcommand + others). The full agent surface from the spec is implemented.
+- MCP tool count: **16** (3 perception + 7 action + 3 sync + 3 memory). `flutter-qa-mcp review` is a CLI subcommand, not an MCP tool.
 - `unresolved[]` array is emitted in every snapshot, with `source_location` proposals from AST parsing.
 - `.flutter_qa/map.json` persists across runs; human labels promote unresolved → resolved automatically.
 - `flutter-qa-mcp review` opens a localhost dashboard for human curation.
