@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/mcp/transport.dart';
+import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
+import 'package:flutter_qa_mcp/src/tools/sync_tools.dart';
 import 'package:flutter_qa_mcp/src/version.dart';
 import 'package:flutter_qa_mcp/src/vm/client.dart';
 
@@ -29,7 +31,11 @@ Future<void> main(List<String> args) async {
 
   final vm = await VmClient.connect(Uri.parse(attach));
   final transport = StdioTransport(input: stdin, output: stdout);
-  final protocol = McpProtocol(tools: perceptionTools(vm));
+  final protocol = McpProtocol(tools: [
+    ...perceptionTools(vm),
+    ...actionTools(vm),
+    ...syncTools(vm),
+  ]);
 
   await for (final msg in transport.incoming) {
     final resp = await protocol.handle(msg);
