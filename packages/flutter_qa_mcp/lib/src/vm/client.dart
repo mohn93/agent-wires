@@ -1,9 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 
 class VmClient {
   VmClient._(this._service, this._isolateId);
+
+  /// Named constructor for test subclasses. Initialises fields with no-op
+  /// values; subclasses should override [callExtension].
+  VmClient.test()
+      : _service = VmService(const Stream.empty(), (_) {}),
+        _isolateId = '';
 
   final VmService _service;
   final String _isolateId;

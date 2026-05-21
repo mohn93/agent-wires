@@ -4,7 +4,22 @@ import 'dart:convert';
 import 'package:flutter_qa_mcp/src/map/map_record.dart';
 import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/tools/memory_tools.dart';
+import 'package:flutter_qa_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
+
+// A fake VmClient that returns a canned snapshot without a real VM connection.
+class _FakeVm extends VmClient {
+  _FakeVm(this._snapshot) : super.test();
+
+  final Map<String, dynamic> _snapshot;
+
+  @override
+  Future<Map<String, dynamic>> callExtension(
+    String name, [
+    Map<String, dynamic>? args,
+  ]) async =>
+      _snapshot;
+}
 
 void main() {
   late Directory tmp;
@@ -19,8 +34,12 @@ void main() {
     if (tmp.existsSync()) await tmp.delete(recursive: true);
   });
 
-  Future<Map<String, dynamic>> call(String name, Map<String, dynamic> args) async {
-    final tool = memoryTools(map).firstWhere((t) => t.name == name);
+  Future<Map<String, dynamic>> call(
+    String name,
+    Map<String, dynamic> args, {
+    VmClient? vm,
+  }) async {
+    final tool = memoryTools(map, vm: vm).firstWhere((t) => t.name == name);
     final result = await tool.handler(args);
     final text = ((result['content'] as List).first as Map)['text'] as String;
     return jsonDecode(text) as Map<String, dynamic>;
@@ -61,8 +80,60 @@ void main() {
     expect((matches.first as Map)['human_label'], 'Checkout Button');
   });
 
-  test('label_element with missing fingerprint returns success:false', () async {
+  test('label_element with missing fingerprint and no vm returns success:false', () async {
     final resp = await call('label_element', {'name': 'X'});
     expect(resp['success'], isFalse);
+  });
+
+  test('label_element resolves element_id via vm snapshot', () async {
+    final fakeSnapshot = {
+      'elements': [
+        {'id': 'elem_42', 'fingerprint': 'fp_resolved', 'type': 'Button'},
+      ],
+      'unresolved': <dynamic>[],
+    };
+    final fakeVm = _FakeVm(fakeSnapshot);
+
+    final resp = await call(
+      'label_element',
+      {'element_id': 'elem_42', 'name': 'Add to Cart'},
+      vm: fakeVm,
+    );
+    expect(resp['success'], isTrue);
+    expect(resp['fingerprint'], 'fp_resolved');
+    expect(map.get('fp_resolved')?.humanLabel, 'Add to Cart');
+  });
+
+  test('label_element returns error when element_id not in snapshot', () async {
+    final fakeSnapshot = {
+      'elements': <dynamic>[],
+      'unresolved': <dynamic>[],
+    };
+    final fakeVm = _FakeVm(fakeSnapshot);
+
+    final resp = await call(
+      'label_element',
+      {'element_id': 'nonexistent', 'name': 'Whatever'},
+      vm: fakeVm,
+    );
+    expect(resp['success'], isFalse);
+    expect(resp['error'], contains('element_id not found'));
+  });
+
+  test('get_labels filters by route when route is provided', () async {
+    map.upsert(MapEntry(
+      fingerprint: 'f_cart',
+      humanLabel: 'Cart Button',
+      screenContext: '/cart',
+    ));
+    map.upsert(MapEntry(
+      fingerprint: 'f_home',
+      humanLabel: 'Home Header',
+      screenContext: '/home',
+    ));
+    final resp = await call('get_labels', {'route': '/cart'});
+    final labels = resp['labels'] as List;
+    expect(labels, hasLength(1));
+    expect((labels.first as Map)['screen_context'], '/cart');
   });
 }

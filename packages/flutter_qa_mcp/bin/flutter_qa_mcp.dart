@@ -82,7 +82,7 @@ Future<void> _runServe(List<String> args) async {
     ...perceptionTools(vm, map),
     ...actionTools(vm),
     ...syncTools(vm),
-    ...memoryTools(map),
+    ...memoryTools(map, vm: vm),
   ]);
 
   await for (final msg in transport.incoming) {
