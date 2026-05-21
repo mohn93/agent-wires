@@ -11,6 +11,7 @@ import 'extensions/snapshot_ext.dart';
 import 'extensions/scroll_ext.dart';
 import 'extensions/swipe_ext.dart';
 import 'extensions/tap_ext.dart';
+import 'extensions/wait_for_element_ext.dart';
 import 'extensions/wait_for_idle_ext.dart';
 import 'extensions/wait_for_route_ext.dart';
 import 'navigation/route_tracker.dart';
@@ -46,6 +47,7 @@ class FlutterQAProbe {
     _register(ClearTextExtension.name, ClearTextExtension.handle);
     _register(ScrollExtension.name, ScrollExtension.handle);
     _register(PressBackExtension.name, PressBackExtension.handle);
+    _register(WaitForElementExtension.name, WaitForElementExtension.handle);
     _register(WaitForIdleExtension.name, WaitForIdleExtension.handle);
     _register(WaitForRouteExtension.name, WaitForRouteExtension.handle);
   }
