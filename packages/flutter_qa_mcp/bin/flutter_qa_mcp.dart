@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:args/args.dart';
 import 'package:flutter_qa_mcp/src/dashboard/server.dart';
 import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/mcp/transport.dart';
+import 'package:flutter_qa_mcp/src/runner/flutter_runner.dart';
 import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/memory_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
@@ -12,16 +14,15 @@ import 'package:flutter_qa_mcp/src/version.dart';
 import 'package:flutter_qa_mcp/src/vm/client.dart';
 
 Future<void> main(List<String> args) async {
-  // Identify subcommand vs flag-only invocation.
   final positional = args.where((a) => !a.startsWith('-')).toList();
   final subcommand = positional.isNotEmpty ? positional.first : 'serve';
-
-  // Strip the subcommand from the args so each handler sees only its own flags.
   final rest = [...args]..removeWhere((a) => a == subcommand);
 
   switch (subcommand) {
     case 'review':
       return _runReview(rest);
+    case 'run':
+      return _runRun(rest);
     case 'serve':
     default:
       return _runServe(rest);
@@ -51,15 +52,67 @@ Future<void> _runReview(List<String> args) async {
   await server.stop();
 }
 
+/// `flutter_qa_mcp run [-d <device>] [--project <flutter app dir>]`
+///
+/// One-shot wrapper: launches `flutter run --machine` on the given app,
+/// discovers its VM service URI, and serves MCP over stdio. This is what
+/// an MCP client (Claude Desktop, Cursor, etc.) should spawn so the user
+/// doesn't have to copy/paste a URI every time.
+Future<void> _runRun(List<String> args) async {
+  final parser = ArgParser()
+    ..addOption('device', abbr: 'd', help: 'Device id (default: flutter picks)')
+    ..addOption('project',
+        defaultsTo: Directory.current.path,
+        help: 'Flutter app directory')
+    ..addOption('map-root', help: 'Project root for .flutter_qa/map.json')
+    ..addFlag('help', abbr: 'h', negatable: false);
+  final parsed = parser.parse(args);
+  if (parsed['help'] as bool) {
+    stdout.writeln(
+        'flutter_qa_mcp run — boot a Flutter app and serve MCP in one step\n');
+    stdout.writeln(parser.usage);
+    return;
+  }
+  final project = parsed['project'] as String;
+  final mapRoot = (parsed['map-root'] as String?) ?? project;
+
+  final runner = FlutterRunner(
+    workingDirectory: project,
+    deviceId: parsed['device'] as String?,
+  );
+  stderr.writeln('flutter_qa_mcp: booting Flutter app in $project ...');
+  await runner.start();
+  stderr.writeln('flutter_qa_mcp: VM service @ ${runner.vmServiceUri}');
+
+  final map = SemanticMap(projectRoot: mapRoot);
+  await map.load();
+
+  final vm = await VmClient.connect(runner.vmServiceUri);
+  stderr.writeln('flutter_qa_mcp: attached to QA isolate, serving MCP.');
+
+  await _serveStdio(vm: vm, map: map, onShutdown: () async {
+    await vm.dispose();
+    await runner.stop();
+  });
+}
+
 Future<void> _runServe(List<String> args) async {
   final parser = ArgParser()
-    ..addOption('attach', help: 'VM service URI (ws://...)')
+    ..addOption('attach', help: 'VM service URI (http(s):// or ws(s)://)')
+    ..addOption('map-root',
+        defaultsTo: Directory.current.path,
+        help: 'Project root for .flutter_qa/map.json')
     ..addFlag('version', negatable: false)
     ..addFlag('help', abbr: 'h', negatable: false);
 
   final parsed = parser.parse(args);
   if (parsed['help'] as bool) {
     stdout.writeln('flutter_qa_mcp — MCP server for Flutter QA agents\n');
+    stdout.writeln('Subcommands:');
+    stdout.writeln('  run     boot a Flutter app and serve MCP in one step (preferred)');
+    stdout.writeln('  serve   attach to an already-running VM service URI');
+    stdout.writeln('  review  open the QA review dashboard\n');
+    stdout.writeln('Flags for `serve` (the default subcommand):');
     stdout.writeln(parser.usage);
     return;
   }
@@ -69,14 +122,23 @@ Future<void> _runServe(List<String> args) async {
   }
   final attach = parsed['attach'] as String?;
   if (attach == null) {
-    stderr.writeln('--attach <vm-service-uri> is required');
+    stderr.writeln('--attach <vm-service-uri> is required for `serve`');
+    stderr.writeln('(prefer `flutter_qa_mcp run` so the URI is auto-discovered)');
     exit(64);
   }
-
-  final map = SemanticMap(projectRoot: Directory.current.path);
+  final map = SemanticMap(projectRoot: parsed['map-root'] as String);
   await map.load();
-
   final vm = await VmClient.connect(Uri.parse(attach));
+  await _serveStdio(vm: vm, map: map, onShutdown: () async {
+    await vm.dispose();
+  });
+}
+
+Future<void> _serveStdio({
+  required VmClient vm,
+  required SemanticMap map,
+  required Future<void> Function() onShutdown,
+}) async {
   final transport = StdioTransport(input: stdin, output: stdout);
   final protocol = McpProtocol(tools: [
     ...perceptionTools(vm, map),
@@ -85,8 +147,16 @@ Future<void> _runServe(List<String> args) async {
     ...memoryTools(map, vm: vm),
   ]);
 
+  late StreamSubscription sigint;
+  sigint = ProcessSignal.sigint.watch().listen((_) async {
+    await sigint.cancel();
+    await onShutdown();
+    exit(0);
+  });
+
   await for (final msg in transport.incoming) {
     final resp = await protocol.handle(msg);
     if (resp != null) transport.send(resp);
   }
+  await onShutdown();
 }

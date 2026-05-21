@@ -1,24 +1,25 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
+import 'package:flutter_qa_mcp/src/runner/flutter_runner.dart';
 import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
 import 'package:flutter_qa_mcp/src/tools/sync_tools.dart';
 import 'package:flutter_qa_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
 
-import '_harness.dart';
-
 void main() {
   group('e2e', () {
-    final harness = FlutterTestHarness();
+    final harness = FlutterRunner(
+      workingDirectory: '../../examples/demo_app',
+      deviceId: Platform.environment['FLUTTER_QA_E2E_DEVICE'],
+    );
     late VmClient vm;
     late McpProtocol protocol;
 
     setUpAll(() async {
-      await harness.start(
-        workingDirectory: '../../examples/demo_app',
-      );
+      await harness.start();
       vm = await VmClient.connect(harness.vmServiceUri);
       final map = SemanticMap(projectRoot: '/tmp');
       protocol = McpProtocol(tools: [
