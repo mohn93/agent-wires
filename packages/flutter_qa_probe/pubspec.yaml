@@ -1,0 +1,14 @@
+name: flutter_qa_probe
+description: Runtime probe exposing the Flutter widget tree to QA agents over the Dart VM service.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
