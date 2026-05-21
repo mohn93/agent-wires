@@ -1,0 +1,4 @@
+analyzer:
+  exclude:
+    # fixture files are parse-only targets with intentionally missing imports
+    - test/fixtures/**
