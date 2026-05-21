@@ -78,4 +78,25 @@ void main() {
     expect(resp.headers.contentType?.mimeType, 'text/html');
     client.close();
   });
+
+  test('GET /api/unresolved returns entries sorted descending by observation_count', () async {
+    map.upsert(MapEntry(fingerprint: 'u_low', observationCount: 1));
+    map.upsert(MapEntry(fingerprint: 'u_high', observationCount: 5));
+    map.upsert(MapEntry(fingerprint: 'u_mid', observationCount: 3));
+
+    final client = HttpClient();
+    final req = await client.getUrl(Uri.parse('http://localhost:${server.port}/api/unresolved'));
+    final resp = await req.close();
+    final body = await resp.transform(utf8.decoder).join();
+    final parsed = jsonDecode(body) as Map<String, dynamic>;
+    final unresolved = (parsed['unresolved'] as List)
+        .cast<Map<String, dynamic>>()
+        .where((e) => (e['fingerprint'] as String).startsWith('u_'))
+        .toList();
+    expect(unresolved.length, 3);
+    expect(unresolved[0]['fingerprint'], 'u_high');
+    expect(unresolved[1]['fingerprint'], 'u_mid');
+    expect(unresolved[2]['fingerprint'], 'u_low');
+    client.close();
+  });
 }

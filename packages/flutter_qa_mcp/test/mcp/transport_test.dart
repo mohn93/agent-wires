@@ -38,7 +38,9 @@ class _CollectSink implements StreamSink<List<int>> {
   Future close() async {}
   @override
   Future addStream(Stream<List<int>> stream) async {
-    await for (final c in stream) buf.add(c);
+    await for (final c in stream) {
+      buf.add(c);
+    }
   }
   @override
   void addError(error, [StackTrace? st]) {}

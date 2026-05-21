@@ -22,21 +22,25 @@ class AstParser {
 
   static _ParsedFile? _load(String filePath) {
     final cached = _cache[filePath];
-    if (cached != null) return cached;
     final file = File(filePath);
     if (!file.existsSync()) return null;
+    final currentMtime = file.lastModifiedSync();
+    if (cached != null && cached.mtime.isAtSameMomentAs(currentMtime)) {
+      return cached;
+    }
     final source = file.readAsStringSync();
     final result = parseString(content: source, throwIfDiagnostics: false);
-    final pf = _ParsedFile(result.unit, _LineOffsets(source));
+    final pf = _ParsedFile(result.unit, _LineOffsets(source), currentMtime);
     _cache[filePath] = pf;
     return pf;
   }
 }
 
 class _ParsedFile {
-  _ParsedFile(this.unit, this.offsets);
+  _ParsedFile(this.unit, this.offsets, this.mtime);
   final CompilationUnit unit;
   final _LineOffsets offsets;
+  final DateTime mtime;
   int? offsetFor(int line, int column) => offsets.offsetFor(line, column);
 }
 

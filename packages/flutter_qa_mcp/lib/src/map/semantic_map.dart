@@ -45,7 +45,7 @@ class SemanticMap {
       'version': 1,
       'entries': _entries.values.map((e) => e.toJson()).toList(),
     };
-    final tmp = File('${_filePath}.tmp');
+    final tmp = File('$_filePath.tmp');
     await tmp.writeAsString(const JsonEncoder.withIndent('  ').convert(body));
     await tmp.rename(_filePath);
   }

@@ -31,7 +31,13 @@ class DashboardServer {
   }
 
   Future<void> stop() async {
-    await _server?.close();
+    final s = _server;
+    if (s == null) return;
+    try {
+      await s.close().timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      await s.close(force: true);
+    }
     _server = null;
   }
 
@@ -49,10 +55,10 @@ class DashboardServer {
   Response _getUnresolved(Request request) {
     final unresolved = map.entries
         .where((e) => e.humanLabel == null && !e.dismissed)
-        .map((e) => e.toJson())
-        .toList();
+        .toList()
+      ..sort((a, b) => b.observationCount.compareTo(a.observationCount));
     return Response.ok(
-      jsonEncode({'unresolved': unresolved}),
+      jsonEncode({'unresolved': unresolved.map((e) => e.toJson()).toList()}),
       headers: {'content-type': 'application/json'},
     );
   }
