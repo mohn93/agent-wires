@@ -1,0 +1,7 @@
+# pubspec.yaml
+name: flutter_qa_workspace
+publish_to: none
+environment:
+  sdk: ^3.5.0
+dev_dependencies:
+  melos: ^6.0.0

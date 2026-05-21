@@ -1,0 +1,8 @@
+# melos.yaml
+name: flutter_qa
+packages:
+  - packages/**
+  - examples/**
+command:
+  bootstrap:
+    runPubGetInParallel: true
