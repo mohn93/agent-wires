@@ -1,16 +1,20 @@
 import 'dart:convert';
+import '../enrich/snapshot_enricher.dart';
 import '../enrich/som_annotator.dart';
+import '../map/semantic_map.dart';
 import '../mcp/tool.dart';
 import '../vm/client.dart';
 
-List<Tool> perceptionTools(VmClient vm) => [
+List<Tool> perceptionTools(VmClient vm, SemanticMap map) => [
       Tool(
         name: 'snapshot',
-        description: 'Returns the denoised semantic tree of the currently visible screen.',
+        description:
+            'Returns the denoised semantic tree of the visible screen, enriched with proposals and persistent labels.',
         inputSchema: {'type': 'object', 'properties': {}},
         handler: (_) async {
-          final json = await vm.callExtension('ext.qa.snapshot');
-          return _toolResult(jsonEncode(json));
+          final raw = await vm.callExtension('ext.qa.snapshot');
+          final enriched = SnapshotEnricher.enrich(raw: raw, map: map);
+          return _toolResult(jsonEncode(enriched));
         },
       ),
       Tool(

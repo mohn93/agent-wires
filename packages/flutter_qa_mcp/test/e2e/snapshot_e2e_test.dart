@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
 import 'package:flutter_qa_mcp/src/vm/client.dart';
@@ -39,7 +40,8 @@ void main() {
 
     test('snapshot tool returns elements from demo app home screen', () async {
       final vm = await VmClient.connect(vmUri);
-      final protocol = McpProtocol(tools: perceptionTools(vm));
+      final map = SemanticMap(projectRoot: '/tmp');
+      final protocol = McpProtocol(tools: perceptionTools(vm, map));
       final resp = (await protocol.handle({
         'jsonrpc': '2.0',
         'id': 1,

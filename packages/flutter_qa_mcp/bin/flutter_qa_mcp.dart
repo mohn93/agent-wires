@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:args/args.dart';
+import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/mcp/transport.dart';
 import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
+import 'package:flutter_qa_mcp/src/tools/memory_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
 import 'package:flutter_qa_mcp/src/tools/sync_tools.dart';
 import 'package:flutter_qa_mcp/src/version.dart';
@@ -29,12 +31,16 @@ Future<void> main(List<String> args) async {
     exit(64);
   }
 
+  final map = SemanticMap(projectRoot: Directory.current.path);
+  await map.load();
+
   final vm = await VmClient.connect(Uri.parse(attach));
   final transport = StdioTransport(input: stdin, output: stdout);
   final protocol = McpProtocol(tools: [
-    ...perceptionTools(vm),
+    ...perceptionTools(vm, map),
     ...actionTools(vm),
     ...syncTools(vm),
+    ...memoryTools(map),
   ]);
 
   await for (final msg in transport.incoming) {

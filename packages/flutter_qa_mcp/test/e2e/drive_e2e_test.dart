@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
@@ -32,8 +33,9 @@ void main() {
       });
       vmUri = await completer.future.timeout(const Duration(seconds: 60));
       vm = await VmClient.connect(vmUri);
+      final map = SemanticMap(projectRoot: '/tmp');
       protocol = McpProtocol(tools: [
-        ...perceptionTools(vm),
+        ...perceptionTools(vm, map),
         ...actionTools(vm),
         ...syncTools(vm),
       ]);
