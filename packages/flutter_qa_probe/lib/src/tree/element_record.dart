@@ -1,5 +1,17 @@
 import 'package:flutter/widgets.dart';
 
+class Proposal {
+  Proposal({required this.source, required this.label, required this.confidence});
+  final String source;
+  final String label;
+  final double confidence;
+  Map<String, dynamic> toJson() => {
+        'source': source,
+        'label': label,
+        'confidence': confidence,
+      };
+}
+
 class ElementRecord {
   ElementRecord({
     required this.id,
@@ -11,6 +23,7 @@ class ElementRecord {
     required this.bounds,
     required this.creationLocation,
     required this.enabled,
+    this.proposals = const [],
   });
 
   final String id;
@@ -22,6 +35,7 @@ class ElementRecord {
   final Rect? bounds;
   final String? creationLocation;
   final bool enabled;
+  final List<Proposal> proposals;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -39,18 +53,21 @@ class ElementRecord {
           },
         if (creationLocation != null) 'creation_location': creationLocation,
         'enabled': enabled,
+        if (proposals.isNotEmpty) 'proposals': proposals.map((p) => p.toJson()).toList(),
       };
 }
 
 class SnapshotRecord {
-  SnapshotRecord({required this.route, required this.viewport, required this.elements});
+  SnapshotRecord({required this.route, required this.viewport, required this.elements, this.unresolved = const <ElementRecord>[]});
   final String? route;
   final Size viewport;
   final List<ElementRecord> elements;
+  final List<ElementRecord> unresolved;
 
   Map<String, dynamic> toJson() => {
         if (route != null) 'route': route,
         'viewport': {'w': viewport.width, 'h': viewport.height},
         'elements': elements.map((e) => e.toJson()).toList(),
+        'unresolved': unresolved.map((e) => e.toJson()).toList(),
       };
 }
