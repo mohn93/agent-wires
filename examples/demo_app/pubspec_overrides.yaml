@@ -1,0 +1,4 @@
+# melos_managed_dependency_overrides: flutter_qa_probe
+dependency_overrides:
+  flutter_qa_probe:
+    path: ../../packages/flutter_qa_probe
