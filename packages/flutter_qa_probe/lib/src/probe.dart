@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'extensions/inspect_ext.dart';
+import 'extensions/long_press_ext.dart';
 import 'extensions/screenshot_ext.dart';
 import 'extensions/snapshot_ext.dart';
 import 'extensions/tap_ext.dart';
@@ -30,6 +31,7 @@ class FlutterQAProbe {
     _register(InspectExtension.name, InspectExtension.handle);
     _register(ScreenshotExtension.name, ScreenshotExtension.handle);
     _register(TapExtension.name, TapExtension.handle);
+    _register(LongPressExtension.name, LongPressExtension.handle);
   }
 
   static void _register(
