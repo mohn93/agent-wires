@@ -10,6 +10,8 @@ class SnapshotBuilder {
   static SnapshotRecord build() {
     final raw = ElementTreeWalker.walkFromRoot();
     final elements = <ElementRecord>[];
+    final unresolved = <ElementRecord>[];
+    var cursor = 0;
 
     for (final node in raw) {
       final cls = Classifier.classify(node.element.widget);
@@ -26,8 +28,8 @@ class SnapshotBuilder {
         visibleText: inferred.label,
       );
 
-      elements.add(ElementRecord(
-        id: 'e_${elements.length}',
+      final record = ElementRecord(
+        id: 'e_$cursor',
         fingerprint: fp,
         widgetType: node.widgetType,
         role: inferred.role,
@@ -36,7 +38,13 @@ class SnapshotBuilder {
         bounds: node.bounds,
         creationLocation: node.creationLocation,
         enabled: true,
-      ));
+      );
+      if (inferred.label != null) {
+        elements.add(record);
+      } else {
+        unresolved.add(record);
+      }
+      cursor++;
     }
 
     final media = MediaQueryData.fromView(WidgetsBinding.instance.platformDispatcher.views.first);
@@ -44,6 +52,7 @@ class SnapshotBuilder {
       route: FlutterQAProbe.routeTracker.currentRoute,
       viewport: media.size,
       elements: elements,
+      unresolved: unresolved,
     );
   }
 
