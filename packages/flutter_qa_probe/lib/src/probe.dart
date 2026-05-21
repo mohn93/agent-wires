@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
+import 'extensions/inspect_ext.dart';
 import 'extensions/snapshot_ext.dart';
 import 'navigation/route_tracker.dart';
 
@@ -24,6 +25,7 @@ class FlutterQAProbe {
       return developer.ServiceExtensionResponse.result('{"ok":true}');
     });
     _register(SnapshotExtension.name, SnapshotExtension.handle);
+    _register(InspectExtension.name, InspectExtension.handle);
   }
 
   static void _register(
