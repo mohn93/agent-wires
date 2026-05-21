@@ -1,7 +1,4 @@
-// packages/flutter_qa_mcp/test/e2e/drive_e2e_test.dart
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
@@ -10,29 +7,19 @@ import 'package:flutter_qa_mcp/src/tools/sync_tools.dart';
 import 'package:flutter_qa_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
 
+import '_harness.dart';
+
 void main() {
   group('e2e', () {
-    late Process flutter;
-    late Uri vmUri;
+    final harness = FlutterTestHarness();
     late VmClient vm;
     late McpProtocol protocol;
 
     setUpAll(() async {
-      flutter = await Process.start(
-        'flutter',
-        ['test', 'integration_test/qa_smoke_test.dart', '--machine'],
+      await harness.start(
         workingDirectory: '../../examples/demo_app',
       );
-      final completer = Completer<Uri>();
-      flutter.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
-        try {
-          final m = jsonDecode(line);
-          final uri = m is Map ? (m['params']?['observatoryUri'] as String?) : null;
-          if (uri != null && !completer.isCompleted) completer.complete(Uri.parse(uri));
-        } catch (_) {}
-      });
-      vmUri = await completer.future.timeout(const Duration(seconds: 60));
-      vm = await VmClient.connect(vmUri);
+      vm = await VmClient.connect(harness.vmServiceUri);
       final map = SemanticMap(projectRoot: '/tmp');
       protocol = McpProtocol(tools: [
         ...perceptionTools(vm, map),
@@ -43,22 +30,25 @@ void main() {
 
     tearDownAll(() async {
       await vm.dispose();
-      flutter.kill();
-      await flutter.exitCode;
+      await harness.stop();
     });
 
-    Future<Map<String, dynamic>> callTool(String name, Map<String, dynamic> args) async {
+    Future<Map<String, dynamic>> callTool(
+        String name, Map<String, dynamic> args) async {
       final resp = await protocol.handle({
         'jsonrpc': '2.0',
         'id': 1,
         'method': 'tools/call',
         'params': {'name': name, 'arguments': args},
       });
-      final text = ((resp!['result'] as Map)['content'] as List).first['text'] as String;
+      final text =
+          ((resp!['result'] as Map)['content'] as List).first['text'] as String;
       return jsonDecode(text) as Map<String, dynamic>;
     }
 
-    test('snapshot → tap "Go to cart" → wait_for_route → snapshot finds cart content', () async {
+    test(
+        'snapshot → tap "Go to cart" → wait_for_route → snapshot finds cart content',
+        () async {
       final home = await callTool('snapshot', {});
       final goToCart = (home['elements'] as List).firstWhere(
         (e) => (e as Map)['label'] == 'Go to cart',
@@ -82,6 +72,6 @@ void main() {
         (e) => (e as Map)['role'] == 'tappable',
       );
       expect(hasTappable, isTrue);
-    }, timeout: const Timeout(Duration(minutes: 2)));
+    }, timeout: const Timeout(Duration(minutes: 5)));
   }, tags: ['e2e']);
 }

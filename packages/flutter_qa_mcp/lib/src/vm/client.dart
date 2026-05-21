@@ -16,16 +16,42 @@ class VmClient {
   final String _isolateId;
 
   static Future<VmClient> connect(Uri uri) async {
-    if (uri.scheme != 'ws' && uri.scheme != 'wss') {
-      throw ArgumentError('VM service URI must be ws:// or wss://, got: $uri');
+    final wsUri = _toWebSocketUri(uri);
+    final service = await vmServiceConnectUri(wsUri.toString());
+    final isolateId = await _findQaIsolate(service);
+    return VmClient._(service, isolateId);
+  }
+
+  /// Walks every isolate looking for one that has registered an `ext.qa.*`
+  /// extension. Polls for up to 10 s because extension registration races
+  /// with app startup.
+  static Future<String> _findQaIsolate(VmService service) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    String? lastNonQaIsolateId;
+    while (DateTime.now().isBefore(deadline)) {
+      final vm = await service.getVM();
+      for (final ref in vm.isolates ?? const <IsolateRef>[]) {
+        final id = ref.id;
+        if (id == null) continue;
+        try {
+          final full = await service.getIsolate(id);
+          final exts = full.extensionRPCs ?? const <String>[];
+          if (exts.any((e) => e.startsWith('ext.qa.'))) return id;
+          lastNonQaIsolateId = id;
+        } catch (_) {
+          // Skip isolates that fail to load (race with isolate exit).
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
-    final service = await vmServiceConnectUri(uri.toString());
-    final vm = await service.getVM();
-    final isolateRef = vm.isolates?.firstWhere(
-      (i) => i.id != null,
-      orElse: () => throw StateError('no isolates in VM'),
-    );
-    return VmClient._(service, isolateRef!.id!);
+    if (lastNonQaIsolateId != null) {
+      throw StateError(
+        'no isolate has ext.qa.* extensions registered — is '
+        'FlutterQAProbe.install() called in main()? Falling back is unsafe '
+        'because tool calls would silently target the wrong isolate.',
+      );
+    }
+    throw StateError('no isolates in VM');
   }
 
   Future<Map<String, dynamic>> callExtension(
@@ -52,5 +78,22 @@ class VmClient {
 
   Future<void> dispose() async {
     await _service.dispose();
+  }
+
+  /// `flutter run`/`flutter test --machine` prints the VM service URI as
+  /// `http(s)://host:port/<auth>/`. The Dart VM service WebSocket lives at
+  /// `ws(s)://host:port/<auth>/ws`. Accept both shapes from callers.
+  static Uri _toWebSocketUri(Uri uri) {
+    final scheme = switch (uri.scheme) {
+      'http' => 'ws',
+      'https' => 'wss',
+      'ws' || 'wss' => uri.scheme,
+      _ => throw ArgumentError(
+          'VM service URI must be http(s) or ws(s), got: $uri',
+        ),
+    };
+    final segments = [...uri.pathSegments.where((s) => s.isNotEmpty)];
+    if (segments.isEmpty || segments.last != 'ws') segments.add('ws');
+    return uri.replace(scheme: scheme, pathSegments: segments);
   }
 }

@@ -1,3 +1,6 @@
+# E2E tests require a running Flutter app + device/simulator.
+# Default `dart test` skips them. To run them:
+#   dart test --run-skipped --tags e2e
 tags:
   e2e:
-    skip: 'E2E test — requires Flutter + an attached device/simulator. Run explicitly with: dart test --tags e2e'
+    skip: 'requires device/simulator — run with: dart test --run-skipped --tags e2e'

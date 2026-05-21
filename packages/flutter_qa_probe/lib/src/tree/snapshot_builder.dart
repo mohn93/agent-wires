@@ -16,7 +16,7 @@ class SnapshotBuilder {
     for (final node in raw) {
       final cls = Classifier.classify(node.element.widget);
       if (cls != Classification.promote) continue;
-      if (node.bounds == null) continue; // off-screen / not laid out
+      if (node.bounds == null) continue;
 
       final ancestors = _ancestorTypes(node.element);
       final inferred = RoleInference.infer(node.element);

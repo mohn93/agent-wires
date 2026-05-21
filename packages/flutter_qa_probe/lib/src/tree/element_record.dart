@@ -58,7 +58,12 @@ class ElementRecord {
 }
 
 class SnapshotRecord {
-  SnapshotRecord({required this.route, required this.viewport, required this.elements, this.unresolved = const <ElementRecord>[]});
+  SnapshotRecord({
+    required this.route,
+    required this.viewport,
+    required this.elements,
+    this.unresolved = const <ElementRecord>[],
+  });
   final String? route;
   final Size viewport;
   final List<ElementRecord> elements;
