@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
+import 'extensions/enter_text_ext.dart';
 import 'extensions/inspect_ext.dart';
 import 'extensions/long_press_ext.dart';
 import 'extensions/screenshot_ext.dart';
@@ -34,6 +35,7 @@ class FlutterQAProbe {
     _register(TapExtension.name, TapExtension.handle);
     _register(LongPressExtension.name, LongPressExtension.handle);
     _register(SwipeExtension.name, SwipeExtension.handle);
+    _register(EnterTextExtension.name, EnterTextExtension.handle);
   }
 
   static void _register(
