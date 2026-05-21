@@ -33,6 +33,6 @@ Future<void> main(List<String> args) async {
 
   await for (final msg in transport.incoming) {
     final resp = await protocol.handle(msg);
-    transport.send(resp);
+    if (resp != null) transport.send(resp);
   }
 }

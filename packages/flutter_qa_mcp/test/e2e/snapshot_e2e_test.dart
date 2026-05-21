@@ -40,12 +40,12 @@ void main() {
     test('snapshot tool returns elements from demo app home screen', () async {
       final vm = await VmClient.connect(vmUri);
       final protocol = McpProtocol(tools: perceptionTools(vm));
-      final resp = await protocol.handle({
+      final resp = (await protocol.handle({
         'jsonrpc': '2.0',
         'id': 1,
         'method': 'tools/call',
         'params': {'name': 'snapshot', 'arguments': {}},
-      });
+      }))!;
       final text =
           ((resp['result'] as Map)['content'] as List).first['text'] as String;
       final snap = jsonDecode(text) as Map<String, dynamic>;

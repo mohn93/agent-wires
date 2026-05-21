@@ -6,7 +6,8 @@ class McpProtocol {
 
   final Map<String, Tool> _tools;
 
-  Future<Map<String, dynamic>> handle(Map<String, dynamic> req) async {
+  Future<Map<String, dynamic>?> handle(Map<String, dynamic> req) async {
+    if (!req.containsKey('id')) return null; // notification — no response per MCP/JSON-RPC spec
     final id = req['id'];
     final method = req['method'] as String?;
     try {
