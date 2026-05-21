@@ -3,9 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 // ignore: unused_import — visitAncestorElements callback type lives in widgets
 import 'package:flutter/widgets.dart';
-import '../tree/classifier.dart';
-import '../tree/raw_node.dart';
-import '../tree/walker.dart';
+import '../resolver/element_resolver.dart';
 
 class InspectExtension {
   static const String name = 'ext.qa.inspect';
@@ -22,30 +20,16 @@ class InspectExtension {
       );
     }
 
-    final raw = ElementTreeWalker.walkFromRoot();
+    final element = ElementResolver.resolve(id);
 
-    // Apply the same filter as SnapshotBuilder so that the index (e_N) lines up.
-    var idx = 0;
-    RawNode? found;
-    for (final node in raw) {
-      final cls = Classifier.classify(node.element.widget);
-      if (cls != Classification.promote) continue;
-      if (node.bounds == null) continue; // off-screen / not laid out
-      if (id == 'e_$idx') {
-        found = node;
-        break;
-      }
-      idx++;
-    }
-
-    if (found == null) {
+    if (element == null) {
       return developer.ServiceExtensionResponse.error(
         developer.ServiceExtensionResponse.extensionError,
         jsonEncode({'error': 'element not found'}),
       );
     }
 
-    final w = found.element.widget;
+    final w = element.widget;
     final props = <String, String>{};
     final builder = DiagnosticPropertiesBuilder();
     w.debugFillProperties(builder);
@@ -54,14 +38,13 @@ class InspectExtension {
     }
 
     final ancestors = <String>[];
-    found.element.visitAncestorElements((a) {
+    element.visitAncestorElements((a) {
       ancestors.add(a.widget.runtimeType.toString());
       return ancestors.length < 20;
     });
 
     return developer.ServiceExtensionResponse.result(jsonEncode({
-      'widget_type': found.widgetType,
-      'creation_location': found.creationLocation,
+      'widget_type': w.runtimeType.toString(),
       'ancestor_types': ancestors,
       'properties': props,
     }));
