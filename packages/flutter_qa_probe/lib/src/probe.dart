@@ -5,6 +5,7 @@ import 'extensions/clear_text_ext.dart';
 import 'extensions/enter_text_ext.dart';
 import 'extensions/inspect_ext.dart';
 import 'extensions/long_press_ext.dart';
+import 'extensions/press_back_ext.dart';
 import 'extensions/screenshot_ext.dart';
 import 'extensions/snapshot_ext.dart';
 import 'extensions/scroll_ext.dart';
@@ -40,6 +41,7 @@ class FlutterQAProbe {
     _register(EnterTextExtension.name, EnterTextExtension.handle);
     _register(ClearTextExtension.name, ClearTextExtension.handle);
     _register(ScrollExtension.name, ScrollExtension.handle);
+    _register(PressBackExtension.name, PressBackExtension.handle);
   }
 
   static void _register(
