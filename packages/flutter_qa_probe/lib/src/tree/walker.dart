@@ -49,9 +49,10 @@ class ElementTreeWalker {
     // --track-widget-creation is enabled (the default for flutter test and debug).
     const group = '_qa_probe_cl';
     final inspector = WidgetInspectorService.instance;
-    final nodeId = inspector.toId(e, group);
-    if (nodeId == null) return null;
     try {
+      // ignore: invalid_use_of_protected_member - WidgetInspectorService.toId is protected but has no public equivalent
+      final nodeId = inspector.toId(e, group);
+      if (nodeId == null) return null;
       final json = inspector.getDetailsSubtree(nodeId, group);
       final map = jsonDecode(json) as Map<String, dynamic>;
       final loc = map['creationLocation'] as Map<String, dynamic>?;
@@ -61,6 +62,7 @@ class ElementTreeWalker {
     } catch (_) {
       return null;
     } finally {
+      // ignore: invalid_use_of_protected_member - WidgetInspectorService.disposeGroup is protected but has no public equivalent
       inspector.disposeGroup(group);
     }
   }
