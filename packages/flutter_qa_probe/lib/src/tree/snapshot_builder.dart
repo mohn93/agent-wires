@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import '../probe.dart';
 import 'classifier.dart';
 import 'element_record.dart';
 import 'fingerprint.dart';
@@ -40,7 +41,7 @@ class SnapshotBuilder {
 
     final media = MediaQueryData.fromView(WidgetsBinding.instance.platformDispatcher.views.first);
     return SnapshotRecord(
-      route: null, // wired in Task 13
+      route: FlutterQAProbe.routeTracker.currentRoute,
       viewport: media.size,
       elements: elements,
     );
