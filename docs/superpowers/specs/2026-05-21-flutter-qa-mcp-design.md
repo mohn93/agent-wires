@@ -86,7 +86,7 @@ flutter-qa-mcp --attach <uri>                     # MCP server connects
 flutter-qa-mcp review                             # opens dashboard at localhost:7345
 ```
 
-**CI workflow:** `flutter test integration_test/` boots the app with a VM service URI; the MCP server attaches; the agent runs scripted or exploratory flows.
+**CI workflow:** `flutter test integration_test/<entry>.dart --machine` (or `flutter drive`) boots the app with a VM service URI; the MCP server attaches; the agent runs scripted or exploratory flows.
 
 ## MCP tool surface (16 tools)
 
@@ -257,7 +257,7 @@ The human never types a test ID into source code. They curate a vocabulary post-
 
 ## Storage and team sharing
 
-- Map stored at `.flutter_qa/map.json` (SQLite if the project grows past ~5k entries — same file path, just different format)
+- Map stored at `.flutter_qa/map.json` (or `.flutter_qa/map.sqlite` if the project grows past ~5k entries)
 - Committed to git — the semantic map is a QA artifact like fixtures
 - Fingerprints survive in-file refactors (line numbers shift, but `creationLocation` is updated as part of `pub get` re-analysis); cross-file moves break them. Dashboard surfaces orphaned labels and offers migration.
 
