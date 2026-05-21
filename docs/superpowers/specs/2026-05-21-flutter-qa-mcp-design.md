@@ -257,7 +257,7 @@ The human never types a test ID into source code. They curate a vocabulary post-
 
 ## Storage and team sharing
 
-- Map stored at `.flutter_qa/map.json` (or `.flutter_qa/map.sqlite` if the project grows past ~5k entries)
+- Map stored at `.flutter_qa/map.json`
 - Committed to git — the semantic map is a QA artifact like fixtures
 - Fingerprints survive in-file refactors (line numbers shift, but `creationLocation` is updated as part of `pub get` re-analysis); cross-file moves break them. Dashboard surfaces orphaned labels and offers migration.
 
