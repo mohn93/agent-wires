@@ -10,6 +10,6 @@ void main() {
     app.main();
     await tester.pumpAndSettle();
     expect(find.text('Go to cart'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 30));
+    await tester.pump(const Duration(seconds: 60));
   });
 }
