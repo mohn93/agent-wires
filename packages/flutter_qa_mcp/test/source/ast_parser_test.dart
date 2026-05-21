@@ -1,5 +1,5 @@
-import 'package:flutter_qa_probe/src/source/ast_parser.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_qa_mcp/src/source/ast_parser.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('returns enclosing method name for an offset inside the method body', () {
