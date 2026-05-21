@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'extensions/inspect_ext.dart';
+import 'extensions/screenshot_ext.dart';
 import 'extensions/snapshot_ext.dart';
 import 'navigation/route_tracker.dart';
 
@@ -26,6 +27,7 @@ class FlutterQAProbe {
     });
     _register(SnapshotExtension.name, SnapshotExtension.handle);
     _register(InspectExtension.name, InspectExtension.handle);
+    _register(ScreenshotExtension.name, ScreenshotExtension.handle);
   }
 
   static void _register(
