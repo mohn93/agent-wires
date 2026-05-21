@@ -19,6 +19,7 @@ class DemoApp extends StatelessWidget {
       routes: {
         '/': (_) => const HomeScreen(),
         '/cart': (_) => const CartScreen(),
+        '/stress': (_) => const StressScreen(),
       },
     );
   }
@@ -44,7 +45,38 @@ class HomeScreen extends StatelessWidget {
               onPressed: () {},
               icon: const Icon(Icons.shopping_cart),
             ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => Navigator.pushNamed(context, '/stress'),
+              child: const Text('Stress test'),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Long ListView screen used by perf benchmarks. ~6 widgets per row × 200 rows
+/// ≈ 1200 logical widgets (plus Material/Scaffold/AppBar wrappers, well over
+/// the 800-node target).
+class StressScreen extends StatelessWidget {
+  const StressScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Stress')),
+      body: ListView.builder(
+        itemCount: 200,
+        itemBuilder: (context, i) => ListTile(
+          leading: const Icon(Icons.label),
+          title: Text('Item #$i'),
+          subtitle: Text('Subtitle for item $i'),
+          trailing: IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.more_vert),
+          ),
         ),
       ),
     );
