@@ -11,7 +11,9 @@ import 'extensions/snapshot_ext.dart';
 import 'extensions/scroll_ext.dart';
 import 'extensions/swipe_ext.dart';
 import 'extensions/tap_ext.dart';
+import 'extensions/wait_for_idle_ext.dart';
 import 'navigation/route_tracker.dart';
+import 'sync/http_inflight_tracker.dart';
 
 class FlutterQAProbe {
   FlutterQAProbe._();
@@ -29,6 +31,7 @@ class FlutterQAProbe {
     if (_installed) return;
     if (kReleaseMode) return;
     _installed = true;
+    HttpInflightTracker.install();
     _register('ext.qa.ping', (_, __) async {
       return developer.ServiceExtensionResponse.result('{"ok":true}');
     });
@@ -42,6 +45,7 @@ class FlutterQAProbe {
     _register(ClearTextExtension.name, ClearTextExtension.handle);
     _register(ScrollExtension.name, ScrollExtension.handle);
     _register(PressBackExtension.name, PressBackExtension.handle);
+    _register(WaitForIdleExtension.name, WaitForIdleExtension.handle);
   }
 
   static void _register(
