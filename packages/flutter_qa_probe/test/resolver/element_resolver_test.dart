@@ -9,8 +9,12 @@ void main() {
     ));
     final result = ElementResolver.resolve('e_0');
     expect(result, isNotNull);
-    // e_0 is the first promoted+bounded node in tree order; with the existing
-    // classifier, Listener (promoted unconditionally) appears before ElevatedButton.
+    // e_0 is the first promoted+bounded node in DFS tree order. Even with
+    // handler-free Listeners now skipped, the Scaffold's Material widget
+    // internally injects a Listener with onPointerDown/etc. (for ink/splash
+    // feedback) that appears before ElevatedButton in the tree. That Listener
+    // is legitimately promoted because it carries real pointer handlers.
+    // The assertion is therefore left as isNotNull rather than a specific type.
     expect(result!.widget, isNotNull);
   });
 

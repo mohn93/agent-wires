@@ -10,7 +10,7 @@ class Classifier {
     'DropdownButton', 'PopupMenuButton',
     'AppBar', 'BottomNavigationBar', 'Tab', 'Drawer',
     'Dialog', 'AlertDialog', 'BottomSheet', 'SnackBar',
-    'ListTile', 'GestureDetector', 'InkWell', 'Listener',
+    'ListTile', 'GestureDetector', 'InkWell',
   };
 
   static const Set<String> _collapse = {
@@ -43,6 +43,9 @@ class Classifier {
           ? Classification.promote
           : Classification.skip;
     }
+    if (w is Listener) {
+      return _hasListenerHandler(w) ? Classification.promote : Classification.skip;
+    }
     return classifyByType(w.runtimeType.toString());
   }
 
@@ -53,5 +56,13 @@ class Classifier {
         g.onPanStart != null ||
         g.onHorizontalDragStart != null ||
         g.onVerticalDragStart != null;
+  }
+
+  static bool _hasListenerHandler(Listener l) {
+    return l.onPointerDown != null ||
+        l.onPointerUp != null ||
+        l.onPointerMove != null ||
+        l.onPointerCancel != null ||
+        l.onPointerSignal != null;
   }
 }
