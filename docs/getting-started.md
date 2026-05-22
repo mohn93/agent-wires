@@ -1,8 +1,8 @@
-# Getting Started — Flutter QA MCP
+# Getting Started — flutter_probe + flutter_probe_mcp
 
 Drive a Flutter app with an LLM agent in ~10 minutes. You'll wire a probe into a
 Flutter app, configure your MCP client (Claude Code, Claude Desktop, or Cursor)
-to spawn the bundled `flutter_qa_mcp run` command, and then ask the agent to
+to spawn the bundled `flutter_probe_mcp run` command, and then ask the agent to
 take a snapshot.
 
 ## Prerequisites
@@ -22,7 +22,7 @@ release dep graph is cleaner):
 
 ```yaml
 dev_dependencies:
-  flutter_qa_probe: ^0.1.0
+  flutter_probe: ^0.1.0
 ```
 
 ```bash
@@ -34,10 +34,10 @@ tracker into your `MaterialApp`:
 
 ```dart
 import 'package:flutter/material.dart';
-import 'package:flutter_qa_probe/flutter_qa_probe.dart';
+import 'package:flutter_probe/flutter_probe.dart';
 
 void main() {
-  FlutterQAProbe.install();
+  FlutterProbe.install();
   runApp(const MyApp());
 }
 
@@ -47,7 +47,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorObservers: [FlutterQAProbe.routeTracker.createObserver()],
+      navigatorObservers: [FlutterProbe.routeTracker.createObserver()],
       home: const MyHomePage(),
     );
   }
@@ -60,16 +60,16 @@ when called twice.
 ## Step 2 — Install the MCP server
 
 ```bash
-dart pub global activate flutter_qa_mcp
+dart pub global activate flutter_probe_mcp
 ```
 
-This puts a `flutter_qa_mcp` executable on your `PATH`. Confirm:
+This puts a `flutter_probe_mcp` executable on your `PATH`. Confirm:
 
 ```bash
-flutter_qa_mcp --version
+flutter_probe_mcp --version
 ```
 
-If `flutter_qa_mcp` isn't found, follow the
+If `flutter_probe_mcp` isn't found, follow the
 [Dart docs on running global scripts](https://dart.dev/tools/pub/cmd/pub-global#running-a-script-from-your-path).
 
 ## Step 3 — Configure your MCP client
@@ -86,7 +86,7 @@ Add to `~/.claude.json` (create the file if it doesn't exist):
 {
   "mcpServers": {
     "flutter-qa": {
-      "command": "flutter_qa_mcp",
+      "command": "flutter_probe_mcp",
       "args": [
         "run",
         "--project",
@@ -110,7 +110,7 @@ or the equivalent path for your OS:
 {
   "mcpServers": {
     "flutter-qa": {
-      "command": "flutter_qa_mcp",
+      "command": "flutter_probe_mcp",
       "args": [
         "run",
         "--project",
@@ -127,7 +127,7 @@ Quit and reopen Claude Desktop.
 
 ### Cursor / others
 
-Same shape: spawn `flutter_qa_mcp run --project <app dir> -d <device>` over
+Same shape: spawn `flutter_probe_mcp run --project <app dir> -d <device>` over
 stdio. Consult your client's MCP documentation for the config file
 location.
 
@@ -173,7 +173,7 @@ analysis, but a human signs off via the dashboard.
 In a separate terminal:
 
 ```bash
-flutter_qa_mcp review --project-root /Users/you/your-flutter-app
+flutter_probe_mcp review --project-root /Users/you/your-flutter-app
 ```
 
 Open <http://localhost:7345>. You'll see two columns:
@@ -189,12 +189,12 @@ project; commit that file to share the vocabulary with your team.
 
 ## Troubleshooting
 
-- **"no isolate has ext.qa.* extensions registered"** — `FlutterQAProbe.install()`
+- **"no isolate has ext.qa.* extensions registered"** — `FlutterProbe.install()`
   didn't run. Confirm it's the first line of `main()`, and confirm you're in
   debug or profile mode (not release).
 - **First snapshot times out** — iOS first build is slow. Bump the wait by
   asking the agent to call `wait_for_idle(timeout_ms: 30000)` first.
-- **`flutter` not on PATH** — `flutter_qa_mcp run` shells out to `flutter`.
+- **`flutter` not on PATH** — `flutter_probe_mcp run` shells out to `flutter`.
   Make sure the MCP client's spawned env can find it (often means setting
   `PATH` in your shell's login profile, not just `.bashrc`).
 - **VM service connects but tools return empty** — usually means the app
