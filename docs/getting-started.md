@@ -58,7 +58,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorObservers: [FlutterQAProbe.routeTracker],
+      navigatorObservers: [FlutterQAProbe.routeTracker.createObserver()],
       home: const MyHomePage(),
     );
   }

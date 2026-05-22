@@ -6,7 +6,7 @@ void main() {
   testWidgets('tracker reports the current named route', (tester) async {
     final tracker = RouteTracker();
     await tester.pumpWidget(MaterialApp(
-      navigatorObservers: [tracker],
+      navigatorObservers: [tracker.createObserver()],
       initialRoute: '/',
       routes: {
         '/': (_) => const Scaffold(body: Text('root')),

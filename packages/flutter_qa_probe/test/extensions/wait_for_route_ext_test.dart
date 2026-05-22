@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   testWidgets('wait_for_route resolves once the named route becomes current', (tester) async {
     await tester.pumpWidget(MaterialApp(
-      navigatorObservers: [FlutterQAProbe.routeTracker],
+      navigatorObservers: [FlutterQAProbe.routeTracker.createObserver()],
       initialRoute: '/',
       routes: {
         '/': (_) => const Scaffold(body: Text('home')),

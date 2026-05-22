@@ -14,7 +14,7 @@ class DemoApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Demo',
-      navigatorObservers: [FlutterQAProbe.routeTracker],
+      navigatorObservers: [FlutterQAProbe.routeTracker.createObserver()],
       initialRoute: '/',
       routes: {
         '/': (_) => const HomeScreen(),

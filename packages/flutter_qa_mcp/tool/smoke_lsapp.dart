@@ -191,6 +191,11 @@ Future<void> _driveLogin(_Caller call) async {
   if (emailField == null || passField == null || signInBtn == null) {
     stderr.writeln(
         '[smoke] BLOCKED: missing field — email=$emailField pass=$passField signIn=$signInBtn');
+    try {
+      final res = await Process.run('xcrun',
+          ['simctl', 'io', 'booted', 'screenshot', '/tmp/lsapp_blocked.png']);
+      stderr.writeln('[smoke] /tmp/lsapp_blocked.png rc=${res.exitCode}');
+    } catch (_) {}
     return;
   }
   stderr.writeln('[smoke] using email=${emailField['id']} pass=${passField['id']} signIn=${signInBtn['id']}');
