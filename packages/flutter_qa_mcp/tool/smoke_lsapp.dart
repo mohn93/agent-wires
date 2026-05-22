@@ -32,7 +32,7 @@ Future<void> main() async {
     ],
   );
   stderr.writeln('[smoke] booting ls_app companion-production …');
-  await runner.start(timeout: const Duration(minutes: 10));
+  await runner.start(timeout: const Duration(minutes: 20));
   stderr.writeln('[smoke] VM @ ${runner.vmServiceUri}');
 
   final vm = await VmClient.connect(runner.vmServiceUri);
@@ -211,6 +211,16 @@ Future<void> _driveLogin(_Caller call) async {
   stderr.writeln('[smoke] snapshot BEFORE login …');
   final pre = await call('snapshot', {});
   _printSnapshot(pre, label: 'BEFORE login');
+
+  // The app persists auth between launches. If we're already past the
+  // login route, skip everything and jump straight to explore.
+  final route = pre['route'] as String?;
+  if (route == 'MainRoute') {
+    stderr.writeln('[smoke] already logged in (route=MainRoute), skipping auth');
+    await _exploreLoop(call);
+    return;
+  }
+
   final elements =
       (pre['elements'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
   final vp = _viewport(pre);
@@ -457,6 +467,214 @@ Future<void> _enterOtpAndSubmit(_Caller call, String otp) async {
   await Future.delayed(const Duration(seconds: 4));
   _printSnapshot(await call('snapshot', {}), label: 'AFTER OTP submit');
   await _shot('/tmp/lsapp_after_otp.png');
+
+  await _exploreLoop(call);
+}
+
+/// Polls /tmp/lsapp_cmd.txt for commands. The controller (me) writes one
+/// command line at a time; the smoke reads, executes, deletes the file,
+/// snapshots, and screenshots. Output goes to the log and indexed PNGs.
+///
+/// Commands:
+///   snapshot                 — re-snapshot and print
+///   shot                     — take a native screenshot only
+///   tap <label substring>    — find by label (case-insensitive contains),
+///                              largest in-viewport, tap
+///   tap_id <e_N>             — tap by element_id
+///   back                     — press_back
+///   wait <ms>                — wait_for_idle then sleep
+///   scroll <up|down>         — scroll a viewport-sized swipe
+///   text <e_N>=<value>       — enter_text into element id
+///   quit                     — exit cleanly
+Future<void> _exploreLoop(_Caller call) async {
+  const cmdPath = '/tmp/lsapp_cmd.txt';
+  const statePath = '/tmp/lsapp_state.json';
+  var step = 0;
+
+  Future<void> takeAndDump(String tag) async {
+    final snap = await call('snapshot', {});
+    final vp = _viewport(snap);
+    final merged = [
+      ...(snap['elements'] as List).cast<Map>().map(_asDyn),
+      ...(snap['unresolved'] as List).cast<Map>().map(_asDyn),
+    ];
+    // Drop the off-screen device_preview clones from the printed report.
+    bool inViewport(Map<String, dynamic> e) {
+      final b = e['bounds'] as Map?;
+      if (b == null) return false;
+      final x = (b['x'] as num).toDouble();
+      final y = (b['y'] as num).toDouble();
+      final w = (b['w'] as num).toDouble();
+      final h = (b['h'] as num).toDouble();
+      return x >= -8 && y >= -8 && x + w <= vp.w + 8 && y + h <= vp.h + 8;
+    }
+    final visible = merged.where(inViewport).toList();
+    File(statePath).writeAsStringSync(jsonEncode({
+      'tag': tag,
+      'step': step,
+      'route': snap['route'],
+      'visible': visible,
+    }));
+    stdout.writeln('');
+    stdout.writeln('=== step $step: $tag ===');
+    stdout.writeln('route          : ${snap['route']}');
+    stdout.writeln('visible_count  : ${visible.length}');
+    for (final e in visible) {
+      final lbl = e['label'] ?? '';
+      final role = e['role'] ?? '';
+      final id = e['id'];
+      final b = e['bounds'] as Map?;
+      final bounds = b == null
+          ? '?'
+          : '${(b['x'] as num).toStringAsFixed(0)},${(b['y'] as num).toStringAsFixed(0)} '
+              '${(b['w'] as num).toStringAsFixed(0)}x${(b['h'] as num).toStringAsFixed(0)}';
+      stdout.writeln(
+          '  $id  [${role.toString().padRight(10)}] ${lbl.toString().padRight(28)}  $bounds');
+    }
+    await _shot('/tmp/lsapp_explore_${step.toString().padLeft(3, '0')}.png');
+  }
+
+  stdout.writeln('');
+  stdout.writeln('============================================================');
+  stdout.writeln('  EXPLORE MODE — drop commands into $cmdPath');
+  stdout.writeln('============================================================');
+
+  await takeAndDump('explore-start');
+
+  while (true) {
+    final f = File(cmdPath);
+    while (!f.existsSync()) {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    final raw = f.readAsStringSync().trim();
+    try { f.deleteSync(); } catch (_) {}
+    if (raw.isEmpty) continue;
+    step++;
+    stdout.writeln('');
+    stdout.writeln('>>> step $step cmd: $raw');
+
+    final parts = raw.split(' ');
+    final verb = parts.first.toLowerCase();
+    final rest = parts.skip(1).join(' ');
+
+    try {
+      switch (verb) {
+        case 'snapshot':
+          await call('wait_for_idle', {'timeout_ms': 5000});
+          await takeAndDump('snapshot');
+          break;
+        case 'shot':
+          await _shot('/tmp/lsapp_explore_${step.toString().padLeft(3, '0')}.png');
+          stdout.writeln('  shot taken');
+          break;
+        case 'tap':
+          await _exploreTap(call, label: rest);
+          await Future.delayed(const Duration(milliseconds: 800));
+          await call('wait_for_idle', {'timeout_ms': 8000});
+          await Future.delayed(const Duration(seconds: 1));
+          await takeAndDump('after tap "$rest"');
+          break;
+        case 'tap_id':
+          final r = await call('tap', {'element_id': rest});
+          stdout.writeln('  → ${jsonEncode(r)}');
+          await call('wait_for_idle', {'timeout_ms': 8000});
+          await Future.delayed(const Duration(seconds: 1));
+          await takeAndDump('after tap_id $rest');
+          break;
+        case 'back':
+          final r = await call('press_back', {});
+          stdout.writeln('  → ${jsonEncode(r)}');
+          await call('wait_for_idle', {'timeout_ms': 5000});
+          await Future.delayed(const Duration(milliseconds: 800));
+          await takeAndDump('after back');
+          break;
+        case 'wait':
+          final ms = int.tryParse(rest) ?? 3000;
+          await call('wait_for_idle', {'timeout_ms': ms});
+          await takeAndDump('after wait ${ms}ms');
+          break;
+        case 'scroll':
+          await _exploreScroll(call, direction: rest);
+          await Future.delayed(const Duration(milliseconds: 500));
+          await takeAndDump('after scroll $rest');
+          break;
+        case 'text':
+          final eq = rest.indexOf('=');
+          if (eq < 0) {
+            stdout.writeln('  bad text cmd, want "e_N=value"');
+            break;
+          }
+          final id = rest.substring(0, eq).trim();
+          final value = rest.substring(eq + 1);
+          final r = await call(
+              'enter_text', {'element_id': id, 'text': value});
+          stdout.writeln('  → ${jsonEncode(r)}');
+          await call('wait_for_idle', {'timeout_ms': 4000});
+          await takeAndDump('after text $id');
+          break;
+        case 'quit':
+          stdout.writeln('  bye');
+          return;
+        default:
+          stdout.writeln('  unknown verb: $verb');
+      }
+    } catch (e, st) {
+      stdout.writeln('  ERROR: $e');
+      stdout.writeln(st);
+    }
+  }
+}
+
+Future<void> _exploreTap(_Caller call,
+    {required String label}) async {
+  final snap = await call('snapshot', {});
+  final vp = _viewport(snap);
+  final merged = [
+    ...(snap['elements'] as List).cast<Map>().map(_asDyn),
+    ...(snap['unresolved'] as List).cast<Map>().map(_asDyn),
+  ];
+  bool inViewport(Map<String, dynamic> e) {
+    final b = e['bounds'] as Map?;
+    if (b == null) return false;
+    final x = (b['x'] as num).toDouble();
+    final y = (b['y'] as num).toDouble();
+    final w = (b['w'] as num).toDouble();
+    final h = (b['h'] as num).toDouble();
+    return x >= -8 && y >= -8 && x + w <= vp.w + 8 && y + h <= vp.h + 8;
+  }
+  final needle = label.toLowerCase();
+  final matches = merged.where((e) {
+    final lbl = (e['label'] as String?)?.toLowerCase();
+    if (lbl == null) return false;
+    return lbl.contains(needle) && inViewport(e);
+  }).toList();
+  if (matches.isEmpty) {
+    stdout.writeln('  no visible element matches "$label"');
+    return;
+  }
+  // Smallest area wins — more specific target.
+  matches.sort((a, b) {
+    final ab = a['bounds'] as Map;
+    final bb = b['bounds'] as Map;
+    final aArea = (ab['w'] as num) * (ab['h'] as num);
+    final bArea = (bb['w'] as num) * (bb['h'] as num);
+    return aArea.compareTo(bArea);
+  });
+  final pick = matches.first;
+  stdout.writeln(
+      '  matched ${matches.length}; tapping ${pick['id']} "${pick['label']}"');
+  final r = await call('tap', {'element_id': pick['id']});
+  stdout.writeln('  → ${jsonEncode(r)}');
+}
+
+Future<void> _exploreScroll(_Caller call,
+    {required String direction}) async {
+  final dir = direction.trim().toLowerCase();
+  final r = await call('scroll', {
+    'direction': (dir == 'up' || dir == 'down') ? dir : 'down',
+    'distance': 400,
+  });
+  stdout.writeln('  → ${jsonEncode(r)}');
 }
 
 Map<String, dynamic> _asDyn(Map e) => e.cast<String, dynamic>();
