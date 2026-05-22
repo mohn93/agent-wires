@@ -3,6 +3,7 @@ import '../probe.dart';
 import 'classifier.dart';
 import 'element_record.dart';
 import 'fingerprint.dart';
+import 'raw_node.dart';
 import 'role_inference.dart';
 import 'walker.dart';
 
@@ -17,16 +18,16 @@ class SnapshotBuilder {
     'InkWell',
   };
 
-  static SnapshotRecord build() {
+  /// Walks the live tree, applies the snapshot's classify+dedup rules, and
+  /// returns the kept nodes in the same DFS-derived order the snapshot uses
+  /// to assign `e_<idx>` ids. ElementResolver shares this so resolving
+  /// `e_4` always points to the same element the snapshot reported at index
+  /// 4, even after the dedup pass drops most of the gesture chain inside a
+  /// button.
+  static List<RawNode> keptNodes() {
     final raw = ElementTreeWalker.walkFromRoot();
-    final elements = <ElementRecord>[];
-    final unresolved = <ElementRecord>[];
-    var cursor = 0;
-
-    // Compute subtree ranges so we can ask "is node B in node A's subtree"
-    // in O(1). raw is in DFS order; subtreeEnd[i] is the index of the last
-    // descendant of raw[i] (or i itself if it has none).
     final n = raw.length;
+
     final subtreeEnd = List<int>.filled(n, 0);
     for (var i = n - 1; i >= 0; i--) {
       var j = i + 1;
@@ -36,9 +37,6 @@ class SnapshotBuilder {
       subtreeEnd[i] = j - 1;
     }
 
-    // Precompute which nodes are promoted-with-bounds. We need to look
-    // ahead from a generic gesture wrapper to see if any named widget
-    // lives in its subtree, so a single isPromoted lookup is reused.
     final promoted = List<bool>.filled(n, false);
     for (var i = 0; i < n; i++) {
       final node = raw[i];
@@ -53,21 +51,16 @@ class SnapshotBuilder {
     // that just happen to share a DFS ancestor (e.g. a device_preview
     // ListTile that wraps the entire app).
     //
-    // 1. Generic-with-named-descendant: a Listener/GestureDetector/InkWell
+    // 1. Same-bounds-as-ancestor: a promoted descendant whose bounds sit
+    //    inside, and cover ≥60% of, a kept ancestor's bounds is plumbing
+    //    for that ancestor. Catches the gesture chain inside a button.
+    //
+    // 2. Generic-with-named-descendant: a Listener/GestureDetector/InkWell
     //    that has a named promoted descendant in its subtree is plumbing
     //    for that descendant. Catches Scaffold-level Listeners covering
     //    the viewport when buttons live inside.
-    //
-    // 2. Same-bounds-as-ancestor: a promoted descendant whose bounds are
-    //    contained within and roughly the same size as a kept ancestor's
-    //    bounds is plumbing for that ancestor (the InkWell + GestureDetector
-    //    + Listener stack inside a button all share the button's rect).
-    //    Descendants at substantially different bounds are siblings of the
-    //    ancestor in terms of UI and stay independent.
-    //
-    // keptStack holds (subtreeEnd, bounds) for currently-active ancestors;
-    // we pop entries whose subtree we've exited.
     final keptStack = <_Kept>[];
+    final out = <RawNode>[];
 
     for (var i = 0; i < n; i++) {
       while (keptStack.isNotEmpty && keptStack.last.subtreeEnd < i) {
@@ -77,7 +70,6 @@ class SnapshotBuilder {
 
       final node = raw[i];
 
-      // Rule 2: same-bounds-as-kept-ancestor → drop.
       var subsumed = false;
       for (final k in keptStack) {
         if (_containedAndSimilar(node.bounds!, k.bounds)) {
@@ -87,7 +79,6 @@ class SnapshotBuilder {
       }
       if (subsumed) continue;
 
-      // Rule 1: drop generic wrappers that contain a named widget.
       if (_genericGesture.contains(node.widgetType)) {
         var hasNamedDescendant = false;
         for (var j = i + 1; j <= subtreeEnd[i]; j++) {
@@ -100,6 +91,20 @@ class SnapshotBuilder {
         if (hasNamedDescendant) continue;
       }
 
+      out.add(node);
+      keptStack.add(_Kept(subtreeEnd[i], node.bounds!));
+    }
+
+    return out;
+  }
+
+  static SnapshotRecord build() {
+    final elements = <ElementRecord>[];
+    final unresolved = <ElementRecord>[];
+    final kept = keptNodes();
+
+    for (var cursor = 0; cursor < kept.length; cursor++) {
+      final node = kept[cursor];
       final ancestors = _ancestorTypes(node.element);
       final inferred = RoleInference.infer(node.element);
       final fp = Fingerprint.compute(
@@ -126,11 +131,10 @@ class SnapshotBuilder {
       } else {
         unresolved.add(record);
       }
-      cursor++;
-      keptStack.add(_Kept(subtreeEnd[i], node.bounds!));
     }
 
-    final media = MediaQueryData.fromView(WidgetsBinding.instance.platformDispatcher.views.first);
+    final media = MediaQueryData.fromView(
+        WidgetsBinding.instance.platformDispatcher.views.first);
     return SnapshotRecord(
       route: FlutterQAProbe.routeTracker.currentRoute,
       viewport: media.size,
