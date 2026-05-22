@@ -3,3 +3,5 @@ analyzer:
   exclude:
     # fixture files are parse-only targets with intentionally missing imports
     - test/fixtures/**
+    # ad-hoc dev scripts excluded from the published archive (see .pubignore)
+    - tool/**

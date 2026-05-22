@@ -1,0 +1,5 @@
+# Ad-hoc scripts used to exercise the MCP server against a real app
+# during development. Not part of the public API; they reference local
+# filesystem paths and don't belong in the published archive.
+tool/smoke_lsapp.dart
+tool/bench_snapshot.dart

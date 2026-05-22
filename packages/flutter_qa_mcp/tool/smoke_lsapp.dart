@@ -83,7 +83,6 @@ Future<void> main() async {
   exit(0);
 
   // (unused below — kept for ad-hoc multi-sampling)
-  // ignore: dead_code
   // Sample the app at several points so we can see what's on-screen as
   // it transitions from native splash → first Flutter route.
   for (final waitMs in const [0, 5000, 10000, 15000]) {

@@ -13,16 +13,6 @@ take a snapshot.
   non-desktop entry
 - An MCP client. This guide covers Claude Desktop and Claude Code; the same
   pattern works for Cursor and any other stdio-MCP client.
-- A local checkout of this repo. The probe and the MCP server are not on
-  pub.dev yet, so you'll reference them by path.
-
-```bash
-git clone <this repo> ~/ai_mobile_eyes
-export AI_MOBILE_EYES=~/ai_mobile_eyes
-```
-
-The rest of the guide uses `$AI_MOBILE_EYES` whenever it needs a path into the
-repo.
 
 ## Step 1 — Add the probe to your Flutter app (≈2 minutes)
 
@@ -32,8 +22,7 @@ release dep graph is cleaner):
 
 ```yaml
 dev_dependencies:
-  flutter_qa_probe:
-    path: /Users/you/ai_mobile_eyes/packages/flutter_qa_probe
+  flutter_qa_probe: ^0.1.0
 ```
 
 ```bash
@@ -68,11 +57,26 @@ class MyApp extends StatelessWidget {
 That's the entire integration. `install()` is a no-op in `kReleaseMode` and
 when called twice.
 
-## Step 2 — Configure your MCP client
+## Step 2 — Install the MCP server
 
-The bundled `flutter_qa_mcp run` command does everything in one process:
-boots `flutter run --machine`, captures the VM service URI, attaches to the
-QA isolate, and serves MCP over stdio.
+```bash
+dart pub global activate flutter_qa_mcp
+```
+
+This puts a `flutter_qa_mcp` executable on your `PATH`. Confirm:
+
+```bash
+flutter_qa_mcp --version
+```
+
+If `flutter_qa_mcp` isn't found, follow the
+[Dart docs on running global scripts](https://dart.dev/tools/pub/cmd/pub-global#running-a-script-from-your-path).
+
+## Step 3 — Configure your MCP client
+
+The `run` subcommand does everything in one process: boots
+`flutter run --machine`, captures the VM service URI, attaches to the QA
+isolate, and serves MCP over stdio.
 
 ### Claude Code
 
@@ -82,10 +86,8 @@ Add to `~/.claude.json` (create the file if it doesn't exist):
 {
   "mcpServers": {
     "flutter-qa": {
-      "command": "dart",
+      "command": "flutter_qa_mcp",
       "args": [
-        "run",
-        "/Users/you/ai_mobile_eyes/packages/flutter_qa_mcp/bin/flutter_qa_mcp.dart",
         "run",
         "--project",
         "/Users/you/your-flutter-app",
@@ -97,7 +99,7 @@ Add to `~/.claude.json` (create the file if it doesn't exist):
 }
 ```
 
-Restart Claude Code. The agent now has access to all 16 tools.
+Restart Claude Code. The agent now has access to all 18 tools.
 
 ### Claude Desktop
 
@@ -108,10 +110,8 @@ or the equivalent path for your OS:
 {
   "mcpServers": {
     "flutter-qa": {
-      "command": "dart",
+      "command": "flutter_qa_mcp",
       "args": [
-        "run",
-        "/Users/you/ai_mobile_eyes/packages/flutter_qa_mcp/bin/flutter_qa_mcp.dart",
         "run",
         "--project",
         "/Users/you/your-flutter-app",
@@ -127,9 +127,9 @@ Quit and reopen Claude Desktop.
 
 ### Cursor / others
 
-Same shape: spawn `dart run .../bin/flutter_qa_mcp.dart run --project <app dir>
--d <device>` over stdio. Consult your client's MCP documentation for the
-config file location.
+Same shape: spawn `flutter_qa_mcp run --project <app dir> -d <device>` over
+stdio. Consult your client's MCP documentation for the config file
+location.
 
 > **Finding a device id**
 >
@@ -141,7 +141,7 @@ config file location.
 > physical iOS devices). You can omit `-d` to let Flutter pick the first
 > device, but explicit is more predictable.
 
-## Step 3 — Try it (≈1 minute)
+## Step 4 — Try it (≈1 minute)
 
 Open your MCP client and ask:
 
@@ -163,7 +163,7 @@ Other things to try once the first snapshot returns:
 - "Show me the screen with numbered boxes" — `screenshot(annotated: true)`
   draws Set-of-Mark overlays.
 
-## Step 4 — Curate unresolved labels (≈30 seconds per element)
+## Step 5 — Curate unresolved labels (≈30 seconds per element)
 
 When the agent encounters a tappable widget with no text or icon (a bare
 `GestureDetector`, custom-painted control, etc.), it lands in the snapshot's
@@ -173,8 +173,7 @@ analysis, but a human signs off via the dashboard.
 In a separate terminal:
 
 ```bash
-dart run $AI_MOBILE_EYES/packages/flutter_qa_mcp/bin/flutter_qa_mcp.dart \
-  review --project-root /Users/you/your-flutter-app
+flutter_qa_mcp review --project-root /Users/you/your-flutter-app
 ```
 
 Open <http://localhost:7345>. You'll see two columns:

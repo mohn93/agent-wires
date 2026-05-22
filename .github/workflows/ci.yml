@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  probe:
+    name: flutter_qa_probe
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/flutter_qa_probe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: dart analyze
+      - run: flutter test --reporter=expanded
+
+  mcp:
+    name: flutter_qa_mcp
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/flutter_qa_mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - run: dart analyze
+      # e2e tests require a device + Xcode; only the in-process tests
+      # run in CI. They're marked with the `e2e` tag and skipped by
+      # default in dart_test.yaml.
+      - run: dart test --reporter=expanded
