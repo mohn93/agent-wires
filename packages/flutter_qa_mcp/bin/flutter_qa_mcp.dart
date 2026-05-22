@@ -64,6 +64,11 @@ Future<void> _runRun(List<String> args) async {
     ..addOption('project',
         defaultsTo: Directory.current.path,
         help: 'Flutter app directory')
+    ..addOption('flavor', help: 'Flutter build flavor (passed to flutter run)')
+    ..addOption('target',
+        abbr: 't', help: 'Entry-point .dart file (passed to flutter run)')
+    ..addMultiOption('dart-define',
+        help: 'Forwarded as --dart-define=KEY=VALUE (repeatable)')
     ..addOption('map-root', help: 'Project root for .flutter_qa/map.json')
     ..addFlag('help', abbr: 'h', negatable: false);
   final parsed = parser.parse(args);
@@ -75,10 +80,20 @@ Future<void> _runRun(List<String> args) async {
   }
   final project = parsed['project'] as String;
   final mapRoot = (parsed['map-root'] as String?) ?? project;
+  final flavor = parsed['flavor'] as String?;
+  final target = parsed['target'] as String?;
+  final dartDefines = parsed['dart-define'] as List<String>;
+
+  final extraArgs = <String>[
+    if (flavor != null) ...['--flavor', flavor],
+    if (target != null) ...['-t', target],
+    for (final d in dartDefines) '--dart-define=$d',
+  ];
 
   final runner = FlutterRunner(
     workingDirectory: project,
     deviceId: parsed['device'] as String?,
+    flutterArgs: extraArgs,
   );
   stderr.writeln('flutter_qa_mcp: booting Flutter app in $project ...');
   await runner.start();

@@ -33,6 +33,7 @@ class RoleInference {
     'Tab': 'tab',
     'GestureDetector': 'tappable',
     'InkWell': 'tappable',
+    'Listener': 'tappable',
   };
 
   static InferredRole infer(Element e) {
