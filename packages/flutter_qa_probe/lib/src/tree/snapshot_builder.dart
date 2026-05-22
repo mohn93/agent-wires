@@ -88,7 +88,15 @@ class SnapshotBuilder {
             break;
           }
         }
-        if (hasNamedDescendant) continue;
+        // Only drop this generic wrapper as "plumbing" if it covers most
+        // of the viewport — a Scaffold-level Listener with a button
+        // nested deep inside it. Card-sized wrappers (DNS rows, invoice
+        // rows, anything user-authored) are kept so the agent can target
+        // the whole row, with the inner buttons surviving as separate
+        // actions.
+        if (hasNamedDescendant && _coversMostOfViewport(node.bounds!)) {
+          continue;
+        }
       }
 
       // Rule 3: TextField wraps EditableText with padding+border, so the
@@ -148,10 +156,24 @@ class SnapshotBuilder {
         WidgetsBinding.instance.platformDispatcher.views.first);
     return SnapshotRecord(
       route: FlutterQAProbe.routeTracker.currentRoute,
+      routeStack: FlutterQAProbe.routeTracker.routeStack,
       viewport: media.size,
       elements: elements,
       unresolved: unresolved,
     );
+  }
+
+  /// A generic wrapper this large is almost certainly framework plumbing
+  /// (Scaffold's internal Listener, MaterialApp's overlay) rather than a
+  /// user-authored card. Below this threshold we treat it as a real
+  /// target and let it survive even when it has named descendants.
+  static bool _coversMostOfViewport(Rect r) {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final size = view.physicalSize / view.devicePixelRatio;
+    final viewportArea = size.width * size.height;
+    if (viewportArea <= 0) return false;
+    final wrapperArea = r.width * r.height;
+    return wrapperArea >= 0.7 * viewportArea;
   }
 
   /// True when [child]'s rect sits inside [parent]'s rect (within a few

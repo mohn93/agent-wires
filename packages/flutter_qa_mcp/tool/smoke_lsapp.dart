@@ -520,6 +520,10 @@ Future<void> _exploreLoop(_Caller call) async {
     stdout.writeln('');
     stdout.writeln('=== step $step: $tag ===');
     stdout.writeln('route          : ${snap['route']}');
+    final stack = snap['route_stack'];
+    if (stack is List && stack.isNotEmpty) {
+      stdout.writeln('route_stack    : ${stack.join(' → ')}');
+    }
     stdout.writeln('visible_count  : ${visible.length}');
     for (final e in visible) {
       final lbl = e['label'] ?? '';
@@ -617,6 +621,9 @@ Future<void> _exploreLoop(_Caller call) async {
         case 'logs':
           await _exploreLogs(call, rest);
           break;
+        case 'network':
+          await _exploreNetwork(call, rest);
+          break;
         case 'quit':
           stdout.writeln('  bye');
           return;
@@ -693,6 +700,31 @@ Future<void> _exploreLogs(_Caller call, String args) async {
     final logger = e['logger_name'];
     final tail = msg.length > 200 ? '${msg.substring(0, 200)}…' : msg;
     stdout.writeln('  $ts [${lvl.padRight(5)}]${logger == null ? '' : ' ($logger)'} $tail');
+  }
+}
+
+Future<void> _exploreNetwork(_Caller call, String args) async {
+  final params = <String, dynamic>{'limit': 50};
+  final limitMatch = RegExp(r'limit=(\d+)').firstMatch(args);
+  if (limitMatch != null) params['limit'] = int.parse(limitMatch.group(1)!);
+  final sinceMatch = RegExp(r'since=(\S+)').firstMatch(args);
+  if (sinceMatch != null) params['since'] = sinceMatch.group(1)!;
+
+  final r = await call('get_network', params);
+  final entries = (r['entries'] as List?)?.cast<Map>() ?? const [];
+  stdout.writeln('  ${entries.length} entries (cursor=${r['cursor']})');
+  for (final e in entries) {
+    final method = (e['method'] as String?) ?? '';
+    final url = (e['url'] as String?) ?? '';
+    final status = e['status_code'];
+    final ms = e['duration_ms'];
+    final err = e['error'];
+    final pending = e['pending'] == true ? '⏳' : '✓';
+    final summary = err != null
+        ? 'ERR ${err.toString().length > 60 ? err.toString().substring(0, 60) : err}'
+        : 'HTTP ${status ?? '?'} in ${ms ?? '?'}ms';
+    final shortUrl = url.length > 100 ? '${url.substring(0, 100)}…' : url;
+    stdout.writeln('  $pending ${method.padRight(6)} $shortUrl  $summary');
   }
 }
 

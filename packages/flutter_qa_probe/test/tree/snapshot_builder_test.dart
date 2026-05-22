@@ -90,6 +90,48 @@ void main() {
     expect(tfs.first.widgetType, 'TextField');
   });
 
+  testWidgets(
+      'card-sized GestureDetector with inner IconButton survives (DNS-row pattern)',
+      (tester) async {
+    // Custom row widgets (DNS records, invoice items) wrap a few Text
+    // widgets in a GestureDetector and stick action IconButtons inside.
+    // The OLD rule dropped the outer GestureDetector ("generic + named
+    // descendant = plumbing") so the agent saw only the IconButtons —
+    // 8 "delete" buttons with no way to tell which record they belonged
+    // to. The bounds-aware rule keeps card-sized wrappers; only
+    // viewport-spanning generic wrappers (Scaffold's internal Listener)
+    // still get dropped.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 320,
+          height: 80,
+          child: GestureDetector(
+            onTap: () {},
+            child: Row(
+              children: [
+                const Expanded(child: Text('NS mohanned.ly')),
+                IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.delete),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ));
+    final snap = SnapshotBuilder.build();
+    final all = [...snap.elements, ...snap.unresolved];
+    final row = all.where((e) => e.widgetType == 'GestureDetector').toList();
+    final delete = all.where((e) => e.widgetType == 'IconButton').toList();
+    expect(row, hasLength(1),
+        reason: 'card-sized GestureDetector must survive');
+    expect(delete, hasLength(1),
+        reason: 'inner IconButton must also survive');
+    expect(row.first.label, contains('NS mohanned.ly'));
+  });
+
   testWidgets('Padding and Center do not appear in elements', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Padding(padding: EdgeInsets.all(8), child: Center(child: Text('hi'))),

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'network_log.dart';
+
 /// Tracks in-flight HTTP requests so that [wait_for_idle] can determine when
 /// HTTP traffic has settled.
 ///
@@ -61,16 +63,39 @@ class _TrackingClient implements HttpClient {
   final HttpClient _inner;
 
   /// Wraps an [open] call with begin/end tracking around the full request
-  /// lifetime (i.e. until [HttpClientRequest.done] completes).
+  /// lifetime, AND records a [NetworkEntry] for `get_network`.
   Future<HttpClientRequest> _track(
       Future<HttpClientRequest> Function() open) async {
     final token = HttpInflightTracker.beginRequest();
+    final stopwatch = Stopwatch()..start();
+    final startedAt = DateTime.now().toUtc();
     try {
       final req = await open();
-      req.done.whenComplete(() => HttpInflightTracker.endRequest(token));
+      final entry = NetworkEntry(
+        method: req.method,
+        url: req.uri.toString(),
+        startedAt: startedAt.toIso8601String(),
+      );
+      NetworkLog.add(entry);
+      req.done.then((response) {
+        stopwatch.stop();
+        entry
+          ..finishedAt = DateTime.now().toUtc().toIso8601String()
+          ..statusCode = response.statusCode
+          ..durationMs = stopwatch.elapsedMilliseconds;
+      }, onError: (Object error, StackTrace _) {
+        stopwatch.stop();
+        entry
+          ..finishedAt = DateTime.now().toUtc().toIso8601String()
+          ..durationMs = stopwatch.elapsedMilliseconds
+          ..error = error.toString();
+      }).whenComplete(() => HttpInflightTracker.endRequest(token));
       return req;
     } catch (e) {
       HttpInflightTracker.endRequest(token);
+      // A failure here means we never got an HttpClientRequest, so we
+      // never created a NetworkEntry — that's fine; this path is rare
+      // (DNS failures, connection refused before opening).
       rethrow;
     }
   }

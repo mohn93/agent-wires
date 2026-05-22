@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'extensions/clear_text_ext.dart';
 import 'extensions/enter_text_ext.dart';
 import 'extensions/get_logs_ext.dart';
+import 'extensions/get_network_ext.dart';
 import 'extensions/inspect_ext.dart';
 import 'extensions/long_press_ext.dart';
 import 'extensions/press_back_ext.dart';
@@ -59,6 +60,7 @@ class FlutterQAProbe {
     _register(WaitForIdleExtension.name, WaitForIdleExtension.handle);
     _register(WaitForRouteExtension.name, WaitForRouteExtension.handle);
     _register(GetLogsExtension.name, GetLogsExtension.handle);
+    _register(GetNetworkExtension.name, GetNetworkExtension.handle);
   }
 
   static void _register(

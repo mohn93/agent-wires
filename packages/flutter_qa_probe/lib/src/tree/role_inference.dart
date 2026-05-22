@@ -37,11 +37,20 @@ class RoleInference {
     'Listener': 'tappable',
   };
 
+  /// Maximum descendant Text widgets concatenated into a single label.
+  /// Higher → richer disambiguation between sibling cards (e.g. one
+  /// "Sub Total" invoice card vs. another). Lower → tighter labels.
+  static const int _maxLabelParts = 4;
+
+  /// Maximum total length of the combined label. Long enough to keep
+  /// a card's identifying text but short enough to not spam the agent.
+  static const int _maxLabelChars = 80;
+
   static InferredRole infer(Element e) {
     final type = e.widget.runtimeType.toString();
     final role = _roleByType[type] ?? 'unknown';
 
-    final text = _firstDescendantText(e);
+    final text = _descendantText(e);
     if (text != null && text.isNotEmpty) {
       return InferredRole(role: role, label: text, labelSource: LabelSource.textChild);
     }
@@ -54,32 +63,49 @@ class RoleInference {
     return InferredRole(role: role, label: null, labelSource: LabelSource.none);
   }
 
-  static String? _firstDescendantText(Element root) {
-    String? found;
+  /// Collects up to [_maxLabelParts] descendant Text/RichText strings in
+  /// DFS order and joins them with " · ". Single-Text widgets (e.g. a
+  /// button "Submit") still produce just "Submit"; multi-Text rows (an
+  /// invoice card with header + amount + status + number) get a label
+  /// that actually distinguishes them from siblings.
+  static String? _descendantText(Element root) {
+    final parts = <String>[];
+    var totalLen = 0;
+
     void visit(Element e) {
-      if (found != null) return;
+      if (parts.length >= _maxLabelParts) return;
+      if (totalLen >= _maxLabelChars) return;
       final w = e.widget;
       // Skip Icon subtrees — their internal RichText carries icon codepoints,
-      // not human-readable text, and would be picked up before the Icon widget.
+      // not human-readable text.
       if (w is Icon) return;
+      String? s;
       if (w is Text && (w.data?.isNotEmpty ?? false)) {
-        found = w.data;
-        return;
+        s = w.data;
+      } else if (w is RichText) {
+        final t = w.text.toPlainText();
+        if (t.isNotEmpty && !_isIconFontString(t)) s = t;
       }
-      if (w is RichText) {
-        final s = w.text.toPlainText();
-        // Exclude strings that consist solely of private-use / icon-font codepoints
-        // (Material Icons live in the Unicode Private Use Area: U+E000–U+F8FF).
-        if (s.isNotEmpty && !_isIconFontString(s)) {
-          found = s;
-          return;
+      if (s != null) {
+        final trimmed = s.trim();
+        if (trimmed.isNotEmpty &&
+            (parts.isEmpty || parts.last != trimmed)) {
+          parts.add(trimmed);
+          totalLen += trimmed.length + 3; // " · "
         }
+        // Texts don't have meaningful descendants for label collection.
+        return;
       }
       e.visitChildren(visit);
     }
 
     root.visitChildren(visit);
-    return found;
+    if (parts.isEmpty) return null;
+    var combined = parts.join(' · ');
+    if (combined.length > _maxLabelChars) {
+      combined = '${combined.substring(0, _maxLabelChars - 1)}…';
+    }
+    return combined;
   }
 
   /// Returns true when every code unit in [s] falls in the Unicode Private Use

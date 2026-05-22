@@ -60,17 +60,26 @@ class ElementRecord {
 class SnapshotRecord {
   SnapshotRecord({
     required this.route,
+    required this.routeStack,
     required this.viewport,
     required this.elements,
     this.unresolved = const <ElementRecord>[],
   });
   final String? route;
+
+  /// Every observed navigator's current top-of-stack route, most recent
+  /// first. For AutoRoute tab apps where the outer route stays `MainRoute`
+  /// across bottom-nav switches, this distinguishes the active tab —
+  /// `["DomainsRoute", "MainRoute"]` vs. `["InvoicesRoute", "MainRoute"]`.
+  final List<String> routeStack;
+
   final Size viewport;
   final List<ElementRecord> elements;
   final List<ElementRecord> unresolved;
 
   Map<String, dynamic> toJson() => {
         if (route != null) 'route': route,
+        if (routeStack.isNotEmpty) 'route_stack': routeStack,
         'viewport': {'w': viewport.width, 'h': viewport.height},
         'elements': elements.map((e) => e.toJson()).toList(),
         'unresolved': unresolved.map((e) => e.toJson()).toList(),
