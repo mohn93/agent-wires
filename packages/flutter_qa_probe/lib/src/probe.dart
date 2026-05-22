@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'extensions/clear_text_ext.dart';
 import 'extensions/enter_text_ext.dart';
+import 'extensions/get_logs_ext.dart';
 import 'extensions/inspect_ext.dart';
 import 'extensions/long_press_ext.dart';
 import 'extensions/press_back_ext.dart';
@@ -14,6 +15,8 @@ import 'extensions/tap_ext.dart';
 import 'extensions/wait_for_element_ext.dart';
 import 'extensions/wait_for_idle_ext.dart';
 import 'extensions/wait_for_route_ext.dart';
+import 'logs/log_buffer.dart';
+import 'logs/log_capture.dart';
 import 'navigation/route_tracker.dart';
 import 'sync/http_inflight_tracker.dart';
 
@@ -26,6 +29,9 @@ class FlutterQAProbe {
   static final RouteTracker _routeTracker = RouteTracker();
   static RouteTracker get routeTracker => _routeTracker;
 
+  static final LogBuffer _logBuffer = LogBuffer();
+  static LogBuffer get logBuffer => _logBuffer;
+
   static bool get isInstalled => _installed;
   static Set<String> get registeredExtensions => Set.unmodifiable(_registered);
 
@@ -34,6 +40,8 @@ class FlutterQAProbe {
     if (kReleaseMode) return;
     _installed = true;
     HttpInflightTracker.install();
+    LogCapture.install(_logBuffer);
+    GetLogsExtension.bind(_logBuffer);
     _register('ext.qa.ping', (_, __) async {
       return developer.ServiceExtensionResponse.result('{"ok":true}');
     });
@@ -50,6 +58,7 @@ class FlutterQAProbe {
     _register(WaitForElementExtension.name, WaitForElementExtension.handle);
     _register(WaitForIdleExtension.name, WaitForIdleExtension.handle);
     _register(WaitForRouteExtension.name, WaitForRouteExtension.handle);
+    _register(GetLogsExtension.name, GetLogsExtension.handle);
   }
 
   static void _register(

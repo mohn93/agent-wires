@@ -7,6 +7,7 @@ import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/mcp/transport.dart';
 import 'package:flutter_qa_mcp/src/runner/flutter_runner.dart';
 import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
+import 'package:flutter_qa_mcp/src/tools/logs_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/memory_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
 import 'package:flutter_qa_mcp/src/tools/sync_tools.dart';
@@ -160,6 +161,7 @@ Future<void> _serveStdio({
     ...actionTools(vm),
     ...syncTools(vm),
     ...memoryTools(map, vm: vm),
+    ...logsTools(vm),
   ]);
 
   late StreamSubscription sigint;

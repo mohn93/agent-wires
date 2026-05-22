@@ -14,6 +14,7 @@ import 'package:flutter_qa_mcp/src/map/semantic_map.dart';
 import 'package:flutter_qa_mcp/src/mcp/protocol.dart';
 import 'package:flutter_qa_mcp/src/runner/flutter_runner.dart';
 import 'package:flutter_qa_mcp/src/tools/action_tools.dart';
+import 'package:flutter_qa_mcp/src/tools/logs_tools.dart';
 import 'package:flutter_qa_mcp/src/tools/perception.dart';
 import 'package:flutter_qa_mcp/src/tools/sync_tools.dart';
 import 'package:flutter_qa_mcp/src/vm/client.dart';
@@ -41,6 +42,7 @@ Future<void> main() async {
     ...perceptionTools(vm, map),
     ...actionTools(vm),
     ...syncTools(vm),
+    ...logsTools(vm),
   ]);
 
   Future<Map<String, dynamic>> call(String name, Map<String, dynamic> a) async {
@@ -612,6 +614,9 @@ Future<void> _exploreLoop(_Caller call) async {
           await call('wait_for_idle', {'timeout_ms': 4000});
           await takeAndDump('after text $id');
           break;
+        case 'logs':
+          await _exploreLogs(call, rest);
+          break;
         case 'quit':
           stdout.writeln('  bye');
           return;
@@ -665,6 +670,30 @@ Future<void> _exploreTap(_Caller call,
       '  matched ${matches.length}; tapping ${pick['id']} "${pick['label']}"');
   final r = await call('tap', {'element_id': pick['id']});
   stdout.writeln('  → ${jsonEncode(r)}');
+}
+
+Future<void> _exploreLogs(_Caller call, String args) async {
+  final params = <String, dynamic>{};
+  final limitMatch = RegExp(r'limit=(\d+)').firstMatch(args);
+  if (limitMatch != null) {
+    params['limit'] = int.parse(limitMatch.group(1)!);
+  } else {
+    params['limit'] = 100;
+  }
+  final sinceMatch = RegExp(r'since=(\S+)').firstMatch(args);
+  if (sinceMatch != null) params['since'] = sinceMatch.group(1)!;
+
+  final r = await call('get_logs', params);
+  final entries = (r['entries'] as List?)?.cast<Map>() ?? const [];
+  stdout.writeln('  ${entries.length} entries (cursor=${r['cursor']})');
+  for (final e in entries) {
+    final ts = (e['timestamp'] as String?) ?? '';
+    final lvl = (e['level'] as String?) ?? '';
+    final msg = ((e['message'] as String?) ?? '').replaceAll('\n', ' ');
+    final logger = e['logger_name'];
+    final tail = msg.length > 200 ? '${msg.substring(0, 200)}…' : msg;
+    stdout.writeln('  $ts [${lvl.padRight(5)}]${logger == null ? '' : ' ($logger)'} $tail');
+  }
 }
 
 Future<void> _exploreScroll(_Caller call,
