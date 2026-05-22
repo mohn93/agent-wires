@@ -6,6 +6,12 @@ class Classifier {
   static const Set<String> _promote = {
     'ElevatedButton', 'TextButton', 'OutlinedButton', 'IconButton',
     'FloatingActionButton', 'TextField', 'TextFormField',
+    // EditableText is the actual text-input primitive. TextField wraps it,
+    // but custom PIN/OTP widgets (Pinput, PinCodeTextField, etc.) often
+    // wrap it directly with no TextField in between. Promoting it lets the
+    // agent see those fields; the dedup pass collapses the redundant entry
+    // when a normal TextField sits above.
+    'EditableText',
     'Switch', 'Checkbox', 'Radio', 'Slider',
     'DropdownButton', 'PopupMenuButton',
     'AppBar', 'BottomNavigationBar', 'Tab', 'Drawer',

@@ -128,13 +128,17 @@ Future<void> main() async {
 typedef _Caller = Future<Map<String, dynamic>> Function(
     String name, Map<String, dynamic> args);
 
-/// Pick the element whose bounds have the largest area among those whose
-/// label and role match. device_preview renders the app twice (a small
-/// preview thumb + the main frame); the interactive one is the larger.
+/// Pick the element that's actually visible. device_preview clones the
+/// widget tree, so each interactive widget appears twice — once at the
+/// real viewport coordinates and once shifted off-screen by the preview
+/// frame's transform. The "largest area" heuristic fails when both copies
+/// have the same area; switch to "must be inside the viewport".
 Map<String, dynamic>? _pickByLabel(
   List<Map<String, dynamic>> elements, {
   required String label,
   String? role,
+  required double viewportW,
+  required double viewportH,
 }) {
   final matches = elements.where((e) {
     if (e['label'] != label) return false;
@@ -142,14 +146,41 @@ Map<String, dynamic>? _pickByLabel(
     return true;
   }).toList();
   if (matches.isEmpty) return null;
-  matches.sort((a, b) {
+
+  // Visible = bounding rect lies (mostly) inside [0..viewportW] × [0..viewportH].
+  // Allow a few pixels of slack for shadows/over-render.
+  const slack = 8.0;
+  bool isVisible(Map<String, dynamic> e) {
+    final b = e['bounds'] as Map?;
+    if (b == null) return false;
+    final x = (b['x'] as num).toDouble();
+    final y = (b['y'] as num).toDouble();
+    final w = (b['w'] as num).toDouble();
+    final h = (b['h'] as num).toDouble();
+    return x >= -slack &&
+        y >= -slack &&
+        (x + w) <= viewportW + slack &&
+        (y + h) <= viewportH + slack;
+  }
+
+  final visible = matches.where(isVisible).toList();
+  final pool = visible.isNotEmpty ? visible : matches;
+  pool.sort((a, b) {
     final ab = a['bounds'] as Map?;
     final bb = b['bounds'] as Map?;
     final aArea = ((ab?['w'] as num?) ?? 0) * ((ab?['h'] as num?) ?? 0);
     final bArea = ((bb?['w'] as num?) ?? 0) * ((bb?['h'] as num?) ?? 0);
     return (bArea as num).compareTo(aArea as num);
   });
-  return matches.first;
+  return pool.first;
+}
+
+({double w, double h}) _viewport(Map<String, dynamic> snap) {
+  final v = snap['viewport'] as Map?;
+  return (
+    w: ((v?['w'] as num?) ?? 440).toDouble(),
+    h: ((v?['h'] as num?) ?? 956).toDouble(),
+  );
 }
 
 void _printSnapshot(Map<String, dynamic> snap, {String label = 'snapshot'}) {
@@ -182,11 +213,14 @@ Future<void> _driveLogin(_Caller call) async {
   _printSnapshot(pre, label: 'BEFORE login');
   final elements =
       (pre['elements'] as List).cast<Map>().map((e) => e.cast<String, dynamic>()).toList();
+  final vp = _viewport(pre);
 
-  final emailField = _pickByLabel(elements, label: 'Email', role: 'textfield');
-  final passField =
-      _pickByLabel(elements, label: 'Password', role: 'textfield');
-  final signInBtn = _pickByLabel(elements, label: 'Sign in', role: 'button');
+  final emailField = _pickByLabel(elements,
+      label: 'Email', role: 'textfield', viewportW: vp.w, viewportH: vp.h);
+  final passField = _pickByLabel(elements,
+      label: 'Password', role: 'textfield', viewportW: vp.w, viewportH: vp.h);
+  final signInBtn = _pickByLabel(elements,
+      label: 'Sign in', role: 'button', viewportW: vp.w, viewportH: vp.h);
 
   if (emailField == null || passField == null || signInBtn == null) {
     stderr.writeln(
@@ -228,12 +262,221 @@ Future<void> _driveLogin(_Caller call) async {
 
   _printSnapshot(await call('snapshot', {}), label: 'AFTER tap Sign in');
 
-  // Native simctl screenshot so we can see what actually rendered.
+  await _shot('/tmp/lsapp_after_login.png');
+
+  // === Phase 2: pick "Mohanned Benmesken" → Continue → OTP screen ===
+  await _pickAccountAndContinue(call);
+}
+
+Future<void> _pickAccountAndContinue(_Caller call) async {
+  await call('wait_for_idle', {'timeout_ms': 8000});
+
+  final snap1 = await call('snapshot', {});
+  final list1 = (snap1['elements'] as List).cast<Map>().map(_asDyn).toList();
+  final vp1 = _viewport(snap1);
+  final mohanned = _pickByLabel(list1,
+      label: 'Mohanned Benmesken',
+      role: 'list_item',
+      viewportW: vp1.w,
+      viewportH: vp1.h);
+  if (mohanned == null) {
+    stderr.writeln('[smoke] BLOCKED: no Mohanned Benmesken list_item');
+    await _shot('/tmp/lsapp_blocked.png');
+    return;
+  }
+  stderr.writeln('[smoke] tap account "Mohanned Benmesken" (${mohanned['id']}) …');
+  final tapRes = await call('tap', {'element_id': mohanned['id']});
+  stderr.writeln('  → ${jsonEncode(tapRes)}');
+
+  await call('wait_for_idle', {'timeout_ms': 5000});
+  await Future.delayed(const Duration(seconds: 1));
+
+  // After picking the account, the Continue button should be enabled.
+  final snap2 = await call('snapshot', {});
+  _printSnapshot(snap2, label: 'AFTER pick Mohanned');
+  final list2 = (snap2['elements'] as List).cast<Map>().map(_asDyn).toList();
+  final vp2 = _viewport(snap2);
+  final cont = _pickByLabel(list2,
+      label: 'Continue',
+      role: 'button',
+      viewportW: vp2.w,
+      viewportH: vp2.h);
+  if (cont == null) {
+    stderr.writeln('[smoke] BLOCKED: no Continue button');
+    await _shot('/tmp/lsapp_blocked.png');
+    return;
+  }
+  stderr.writeln('[smoke] tap Continue (${cont['id']}) …');
+  final r = await call('tap', {'element_id': cont['id']});
+  stderr.writeln('  → ${jsonEncode(r)}');
+
+  // Continue triggers the OTP send (network). Give it time to navigate.
+  await call('wait_for_idle', {'timeout_ms': 25000});
+  await Future.delayed(const Duration(seconds: 3));
+
+  final snap3 = await call('snapshot', {});
+  _printSnapshot(snap3, label: 'OTP screen');
+  await _shot('/tmp/lsapp_otp_screen.png');
+
+  // === Phase 3: wait for OTP via /tmp/lsapp_otp.txt ===
+  stderr.writeln('');
+  stderr.writeln('============================================================');
+  stderr.writeln('  Waiting for OTP. Drop the 4–6 digit code into:');
+  stderr.writeln('  /tmp/lsapp_otp.txt');
+  stderr.writeln('  (the controller will write it for you).');
+  stderr.writeln('  Polling for up to 5 minutes.');
+  stderr.writeln('============================================================');
+  final otp = await _readOtpFromFile(
+      const Duration(minutes: 5), '/tmp/lsapp_otp.txt');
+  if (otp == null) {
+    stderr.writeln('[smoke] no OTP received in time, exiting');
+    return;
+  }
+  stderr.writeln('[smoke] got OTP (${otp.length} digits)');
+
+  await _enterOtpAndSubmit(call, otp);
+}
+
+Future<String?> _readOtpFromFile(Duration timeout, String path) async {
+  final file = File(path);
+  if (file.existsSync()) file.deleteSync();
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (file.existsSync()) {
+      final raw = file.readAsStringSync().trim();
+      if (raw.isNotEmpty) {
+        final cleaned = raw.replaceAll(RegExp(r'[^0-9]'), '');
+        if (cleaned.length >= 4) return cleaned;
+      }
+    }
+    await Future.delayed(const Duration(seconds: 2));
+  }
+  return null;
+}
+
+Future<void> _enterOtpAndSubmit(_Caller call, String otp) async {
+  final snap = await call('snapshot', {});
+  _printSnapshot(snap, label: 'OTP screen before typing');
+  // Hidden OTP text inputs (pin_code_fields style — fontSize:0.01, transparent)
+  // have no visible text, so they land in unresolved[], not elements[]. Merge.
+  final elements = [
+    ...(snap['elements'] as List).cast<Map>().map(_asDyn),
+    ...(snap['unresolved'] as List).cast<Map>().map(_asDyn),
+  ];
+  stderr.writeln(
+      '[smoke] merged elements (${(snap['elements'] as List).length}) + '
+      'unresolved (${(snap['unresolved'] as List).length}) = ${elements.length}');
+  final vp = _viewport(snap);
+
+  // OTP UIs come in two flavors: one wide textfield, or N single-digit
+  // textfields side-by-side. Detect by counting textfields with small
+  // adjacent bounds.
+  //
+  // device_preview clones every textfield off-screen; only keep the
+  // ones whose bounds sit inside the viewport.
+  bool inViewport(Map e) {
+    final b = e['bounds'] as Map?;
+    if (b == null) return false;
+    final x = (b['x'] as num).toDouble();
+    final y = (b['y'] as num).toDouble();
+    final w = (b['w'] as num).toDouble();
+    final h = (b['h'] as num).toDouble();
+    return x >= -8 && y >= -8 && x + w <= vp.w + 8 && y + h <= vp.h + 8;
+  }
+
+  final textfields = elements
+      .where((e) => e['role'] == 'textfield' && inViewport(e))
+      .toList();
+  stderr.writeln('[smoke] found ${textfields.length} textfields');
+
+  if (textfields.isEmpty) {
+    stderr.writeln('[smoke] BLOCKED: no textfield on OTP screen');
+    await _shot('/tmp/lsapp_blocked.png');
+    return;
+  }
+
+  // Heuristic: if there's a textfield whose width > 100, treat it as a
+  // single OTP input. Otherwise assume N single-digit fields ordered by x.
+  final wide = textfields.where((e) {
+    final b = e['bounds'] as Map?;
+    return ((b?['w'] as num?) ?? 0) > 100;
+  }).toList();
+
+  if (wide.isNotEmpty) {
+    final field = _pickLargest(wide);
+    stderr.writeln('[smoke] enter_text into single OTP field (${field['id']}) …');
+    final r = await call('enter_text', {
+      'element_id': field['id'],
+      'text': otp,
+    });
+    stderr.writeln('  → ${jsonEncode(r)}');
+  } else {
+    // Multiple single-digit fields. Sort by x ascending, type one char each.
+    final boxes = textfields
+        .where((e) => e['bounds'] != null)
+        .toList()
+      ..sort((a, b) {
+        final ax = (a['bounds'] as Map)['x'] as num;
+        final bx = (b['bounds'] as Map)['x'] as num;
+        return ax.compareTo(bx);
+      });
+    for (var i = 0; i < otp.length && i < boxes.length; i++) {
+      final field = boxes[i] as Map<String, dynamic>;
+      stderr.writeln('[smoke] digit ${i + 1}/${otp.length} → ${field['id']} …');
+      await call('enter_text', {
+        'element_id': field['id'],
+        'text': otp[i],
+      });
+    }
+  }
+
+  await call('wait_for_idle', {'timeout_ms': 8000});
+  await Future.delayed(const Duration(seconds: 2));
+
+  // Find and tap any obvious submit button.
+  final post = await call('snapshot', {});
+  final postElems =
+      (post['elements'] as List).cast<Map>().map(_asDyn).toList();
+  final vpPost = _viewport(post);
+  Map<String, dynamic>? submit;
+  for (final lbl in ['Verify', 'Confirm', 'Continue', 'Submit', 'Sign in']) {
+    submit = _pickByLabel(postElems,
+        label: lbl, role: 'button', viewportW: vpPost.w, viewportH: vpPost.h);
+    if (submit != null) {
+      stderr.writeln('[smoke] tapping submit button "$lbl" (${submit['id']}) …');
+      final r = await call('tap', {'element_id': submit['id']});
+      stderr.writeln('  → ${jsonEncode(r)}');
+      break;
+    }
+  }
+  if (submit == null) {
+    stderr.writeln('[smoke] no obvious submit button; OTP may auto-submit on entry');
+  }
+
+  await call('wait_for_idle', {'timeout_ms': 30000});
+  await Future.delayed(const Duration(seconds: 4));
+  _printSnapshot(await call('snapshot', {}), label: 'AFTER OTP submit');
+  await _shot('/tmp/lsapp_after_otp.png');
+}
+
+Map<String, dynamic> _asDyn(Map e) => e.cast<String, dynamic>();
+Map<String, dynamic> _pickLargest(List<Map<String, dynamic>> xs) {
+  xs.sort((a, b) {
+    final ab = a['bounds'] as Map;
+    final bb = b['bounds'] as Map;
+    final aArea = (ab['w'] as num) * (ab['h'] as num);
+    final bArea = (bb['w'] as num) * (bb['h'] as num);
+    return bArea.compareTo(aArea);
+  });
+  return xs.first;
+}
+
+Future<void> _shot(String path) async {
   try {
     final res = await Process.run(
-        'xcrun', ['simctl', 'io', 'booted', 'screenshot', '/tmp/lsapp_after_login.png']);
-    stderr.writeln('[smoke] native screenshot rc=${res.exitCode}');
+        'xcrun', ['simctl', 'io', 'booted', 'screenshot', path]);
+    stderr.writeln('[smoke] $path rc=${res.exitCode}');
   } catch (e) {
-    stderr.writeln('[smoke] native screenshot failed: $e');
+    stderr.writeln('[smoke] shot $path failed: $e');
   }
 }

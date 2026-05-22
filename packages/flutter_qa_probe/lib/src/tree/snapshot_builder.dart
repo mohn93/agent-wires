@@ -91,8 +91,19 @@ class SnapshotBuilder {
         if (hasNamedDescendant) continue;
       }
 
+      // Rule 3: TextField wraps EditableText with padding+border, so the
+      // bounds don't satisfy the ≥60% area test in rule 1. Drop the
+      // EditableText when a TextField / TextFormField is in the kept
+      // ancestor chain. Custom PIN/OTP widgets that wrap EditableText
+      // directly (no TextField in between) skip rule 3 and survive.
+      if (node.widgetType == 'EditableText' &&
+          keptStack.any((k) =>
+              k.widgetType == 'TextField' || k.widgetType == 'TextFormField')) {
+        continue;
+      }
+
       out.add(node);
-      keptStack.add(_Kept(subtreeEnd[i], node.bounds!));
+      keptStack.add(_Kept(subtreeEnd[i], node.bounds!, node.widgetType));
     }
 
     return out;
@@ -171,8 +182,9 @@ class SnapshotBuilder {
 }
 
 class _Kept {
-  const _Kept(this.subtreeEnd, this.bounds);
+  const _Kept(this.subtreeEnd, this.bounds, this.widgetType);
   final int subtreeEnd;
   final Rect bounds;
+  final String widgetType;
 }
 

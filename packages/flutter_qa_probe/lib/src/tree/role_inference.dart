@@ -24,6 +24,7 @@ class RoleInference {
     'FloatingActionButton': 'button',
     'TextField': 'textfield',
     'TextFormField': 'textfield',
+    'EditableText': 'textfield',
     'Switch': 'switch',
     'Checkbox': 'checkbox',
     'Radio': 'radio',
