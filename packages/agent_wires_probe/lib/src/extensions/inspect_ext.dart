@@ -19,6 +19,9 @@ class InspectExtension {
         jsonEncode({'error': 'element_id required'}),
       );
     }
+    final includeDescendants = params['include_descendants'] != 'false';
+    final descendantDepth =
+        int.tryParse(params['descendant_depth'] ?? '3') ?? 3;
 
     final element = ElementResolver.resolve(id);
 
@@ -43,10 +46,49 @@ class InspectExtension {
       return ancestors.length < 20;
     });
 
-    return developer.ServiceExtensionResponse.result(jsonEncode({
+    final body = <String, dynamic>{
       'widget_type': w.runtimeType.toString(),
       'ancestor_types': ancestors,
       'properties': props,
-    }));
+    };
+    if (includeDescendants) {
+      body['descendants'] =
+          _collectDescendants(element, maxDepth: descendantDepth);
+    }
+    return developer.ServiceExtensionResponse.result(jsonEncode(body));
+  }
+
+  /// Walks descendants of [root] up to [maxDepth] levels. Returns one entry
+  /// per element with depth, widget type, and visible text when present.
+  /// Capped at 500 entries to avoid blowing up on deep Material/Cupertino
+  /// subtrees (each interactive widget can stack 20+ plumbing layers).
+  static List<Map<String, dynamic>> _collectDescendants(
+    Element root, {
+    required int maxDepth,
+  }) {
+    const cap = 500;
+    final out = <Map<String, dynamic>>[];
+    void visit(Element e, int depth) {
+      if (out.length >= cap || depth > maxDepth) return;
+      if (depth > 0) {
+        final entry = <String, dynamic>{
+          'depth': depth,
+          'widget_type': e.widget.runtimeType.toString(),
+        };
+        final text = _extractText(e.widget);
+        if (text != null && text.isNotEmpty) entry['visible_text'] = text;
+        out.add(entry);
+      }
+      e.visitChildren((c) => visit(c, depth + 1));
+    }
+
+    visit(root, 0);
+    return out;
+  }
+
+  static String? _extractText(Widget w) {
+    if (w is Text) return w.data;
+    if (w is RichText) return w.text.toPlainText();
+    return null;
   }
 }

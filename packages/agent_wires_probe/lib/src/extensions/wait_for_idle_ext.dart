@@ -10,11 +10,13 @@ class WaitForIdleExtension {
     Map<String, String> params,
   ) async {
     final timeoutMs = int.tryParse(params['timeout_ms'] ?? '10000') ?? 10000;
-    final idle = await IdlePredicate.waitUntilIdle(
+    final ignoreAnimations = params['ignore_animations'] == 'true';
+    final status = await IdlePredicate.waitUntilIdle(
       timeout: Duration(milliseconds: timeoutMs),
+      ignoreAnimations: ignoreAnimations,
     );
     return developer.ServiceExtensionResponse.result(
-      jsonEncode({'success': true, 'idle': idle}),
+      jsonEncode({'success': true, ...status.toJson()}),
     );
   }
 }

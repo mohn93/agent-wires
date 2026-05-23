@@ -52,16 +52,32 @@ List<Tool> perceptionTools(AppSession session, SemanticMap map) => [
       Tool(
         name: 'inspect',
         description:
-            'Drills into one element by `element_id` — returns the full '
-            'widget chain (ancestors), properties, render-object info, and '
-            'source location. Use this when `snapshot` shows something you '
-            'do not understand or when you need a specific widget property '
-            '(e.g. "is this Checkbox actually checked?"). Not needed for '
-            'normal interaction — `snapshot` already has enough to tap things.',
+            'Drills into one element by `element_id`. Returns the widget '
+            'type, ancestor chain, widget properties, and (by default) the '
+            'descendant subtree to 3 levels — useful for finding "the '
+            'TextField inside this Card" or "what is the structure of this '
+            'CustomPaint." Use when `snapshot` shows something you do not '
+            'understand or when you need a specific widget property '
+            '(e.g. "is this Checkbox checked?"). Each descendant has '
+            '{depth, widget_type, visible_text?}.\n\n'
+            'Pass `include_descendants: false` to skip the subtree, or '
+            '`descendant_depth: N` to go deeper (capped at 100 entries to '
+            'prevent blowups).',
         inputSchema: {
           'type': 'object',
           'properties': {
             'element_id': {'type': 'string'},
+            'include_descendants': {
+              'type': 'boolean',
+              'description':
+                  'Include descendant subtree. Default true.',
+            },
+            'descendant_depth': {
+              'type': 'integer',
+              'description':
+                  'Max depth of descendants to walk. Default 3. Output is '
+                  'capped at 100 entries regardless.',
+            },
           },
           'required': ['element_id'],
         },
@@ -71,7 +87,13 @@ List<Tool> perceptionTools(AppSession session, SemanticMap map) => [
             return _toolError('element_id required');
           }
           final vm = await session.ensureReady();
-          final json = await vm.callExtension('ext.qa.inspect', {'element_id': id});
+          final json = await vm.callExtension('ext.qa.inspect', {
+            'element_id': id,
+            if (args['include_descendants'] == false)
+              'include_descendants': 'false',
+            if (args['descendant_depth'] != null)
+              'descendant_depth': args['descendant_depth'].toString(),
+          });
           return _toolResult(jsonEncode(json));
         },
       ),

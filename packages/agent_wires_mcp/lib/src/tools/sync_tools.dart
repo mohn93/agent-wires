@@ -10,15 +10,34 @@ List<Tool> syncTools(AppSession session) => [
             'frames, no running animations, and no in-flight HTTP. Use this '
             'after any action when you do not know specifically what to wait '
             'for ("I tapped Submit, now wait for things to settle"). Bounded '
-            'by `timeout_ms` (default 10000).',
+            'by `timeout_ms` (default 10000).\n\n'
+            'On timeout, returns `{idle: false, blocked_by: [...]}` listing '
+            'what is still active (`scheduled_frame`, `transient_callback`, '
+            '`in_flight_http:N`) so you know whether to wait longer, retry, '
+            'or just proceed.\n\n'
+            'Animation-heavy screens (sliders with springs, fade chips) may '
+            'never settle — pass `ignore_animations: true` to wait only for '
+            'HTTP to finish and skip the frame/animation checks.',
         inputSchema: {
           'type': 'object',
-          'properties': {'timeout_ms': {'type': 'integer'}},
+          'properties': {
+            'timeout_ms': {'type': 'integer'},
+            'ignore_animations': {
+              'type': 'boolean',
+              'description':
+                  'Skip the scheduled-frame and transient-callback checks; '
+                  'wait only for in-flight HTTP. Use on screens with '
+                  'continuous animations that never settle.',
+            },
+          },
         },
         handler: (args) async {
           final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.wait_for_idle', {
-            if (args['timeout_ms'] != null) 'timeout_ms': args['timeout_ms'].toString(),
+            if (args['timeout_ms'] != null)
+              'timeout_ms': args['timeout_ms'].toString(),
+            if (args['ignore_animations'] == true)
+              'ignore_animations': 'true',
           });
           return _result(jsonEncode(json));
         },
