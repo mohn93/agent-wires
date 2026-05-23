@@ -140,4 +140,42 @@ void main() {
     expect(snap.elements.where((e) => e.widgetType == 'Padding'), isEmpty);
     expect(snap.elements.where((e) => e.widgetType == 'Center'), isEmpty);
   });
+
+  testWidgets('SwitchListTile carries state in the snapshot element',
+      (tester) async {
+    // The agent's exact case: a SwitchListTile labelled "Auto-Renew" that
+    // showed up in elements[], but to read the on/off value they had to
+    // drop into unresolved[] to find the inner Switch. With state inference
+    // the value is on the labelled element directly.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SwitchListTile(
+          value: true,
+          onChanged: (_) {},
+          title: const Text('Auto-Renew'),
+        ),
+      ),
+    ));
+    final snap = SnapshotBuilder.build();
+    final tile = snap.elements.firstWhere(
+      (e) => e.label == 'Auto-Renew',
+      orElse: () => snap.unresolved.firstWhere((e) => e.label == 'Auto-Renew'),
+    );
+    expect(tile.state, 'on');
+  });
+
+  testWidgets('ListTile wrapping a Checkbox reports the inner checkbox state',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ListTile(
+          title: const Text('Accept terms'),
+          trailing: Checkbox(value: false, onChanged: (_) {}),
+        ),
+      ),
+    ));
+    final snap = SnapshotBuilder.build();
+    final tile = snap.elements.firstWhere((e) => e.label == 'Accept terms');
+    expect(tile.state, 'unchecked');
+  });
 }

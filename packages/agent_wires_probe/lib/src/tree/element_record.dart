@@ -23,6 +23,7 @@ class ElementRecord {
     required this.bounds,
     required this.creationLocation,
     required this.enabled,
+    this.state,
     this.proposals = const [],
   });
 
@@ -35,6 +36,17 @@ class ElementRecord {
   final Rect? bounds;
   final String? creationLocation;
   final bool enabled;
+
+  /// Current runtime value of stateful widgets — `"on"`/`"off"` for
+  /// Switch/SwitchListTile, `"checked"`/`"unchecked"`/`"indeterminate"` for
+  /// Checkbox/CheckboxListTile, `"selected"`/`"unselected"` for Radio,
+  /// the slider position for Slider, etc. Null for widgets that have no
+  /// inherent state (Button, ListTile, etc.).
+  ///
+  /// Mutable so a post-pass can copy the state of a contained Switch up to
+  /// its labelled ListTile wrapper, sparing the agent from having to inspect
+  /// a separate inner element to read a toggle's value.
+  String? state;
   final List<Proposal> proposals;
 
   Map<String, dynamic> toJson() => {
@@ -44,6 +56,7 @@ class ElementRecord {
         'role': role,
         if (label != null) 'label': label,
         'label_source': labelSource,
+        if (state != null) 'state': state,
         if (bounds != null)
           'bounds': {
             'x': bounds!.left,

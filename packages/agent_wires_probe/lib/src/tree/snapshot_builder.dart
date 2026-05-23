@@ -5,6 +5,7 @@ import 'element_record.dart';
 import 'fingerprint.dart';
 import 'raw_node.dart';
 import 'role_inference.dart';
+import 'state_inference.dart';
 import 'walker.dart';
 
 class SnapshotBuilder {
@@ -134,6 +135,12 @@ class SnapshotBuilder {
         visibleText: inferred.label,
       );
 
+      // State of the widget itself (Switch.value, Checkbox.value, etc.).
+      // A second pass below copies state up from a kept descendant when this
+      // is null, so a labelled ListTile wrapping a Switch reports "on"/"off"
+      // on the labelled entry directly.
+      final state = StateInference.infer(node.element.widget);
+
       final record = ElementRecord(
         id: 'e_$cursor',
         fingerprint: fp,
@@ -141,6 +148,7 @@ class SnapshotBuilder {
         role: inferred.role,
         label: inferred.label,
         labelSource: inferred.labelSource.name,
+        state: state,
         bounds: node.bounds,
         creationLocation: node.creationLocation,
         enabled: true,
@@ -152,6 +160,8 @@ class SnapshotBuilder {
       }
     }
 
+    _hoistStateFromContainedDescendants([...elements, ...unresolved]);
+
     final media = MediaQueryData.fromView(
         WidgetsBinding.instance.platformDispatcher.views.first);
     return SnapshotRecord(
@@ -161,6 +171,42 @@ class SnapshotBuilder {
       elements: elements,
       unresolved: unresolved,
     );
+  }
+
+  /// SwitchListTile and friends emit two kept entries in our snapshot — a
+  /// labelled ListTile (no state) and an unlabelled Switch (with state).
+  /// Walking the live element tree from the ListTile to find the Switch is
+  /// expensive (Material InkWell stacks 25+ plumbing layers in between), so
+  /// we work over the already-denoised kept set instead: for each stateful
+  /// record (R), find the smallest-bounds containing record without state
+  /// and hoist R's state up to it. O(N²) but N is typically <200.
+  static void _hoistStateFromContainedDescendants(List<ElementRecord> records) {
+    for (final stateful in records) {
+      if (stateful.state == null || stateful.bounds == null) continue;
+      ElementRecord? bestParent;
+      double bestParentArea = double.infinity;
+      for (final candidate in records) {
+        if (identical(candidate, stateful)) continue;
+        if (candidate.state != null) continue;
+        final pBounds = candidate.bounds;
+        if (pBounds == null) continue;
+        if (!_containsRect(pBounds, stateful.bounds!)) continue;
+        final area = pBounds.width * pBounds.height;
+        if (area < bestParentArea) {
+          bestParentArea = area;
+          bestParent = candidate;
+        }
+      }
+      if (bestParent != null) bestParent.state = stateful.state;
+    }
+  }
+
+  static bool _containsRect(Rect outer, Rect inner) {
+    const eps = 2.0;
+    return inner.left >= outer.left - eps &&
+        inner.top >= outer.top - eps &&
+        inner.right <= outer.right + eps &&
+        inner.bottom <= outer.bottom + eps;
   }
 
   /// A generic wrapper this large is almost certainly framework plumbing
@@ -201,6 +247,7 @@ class SnapshotBuilder {
     });
     return out.reversed.toList();
   }
+
 }
 
 class _Kept {
