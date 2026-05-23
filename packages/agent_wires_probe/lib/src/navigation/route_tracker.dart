@@ -1,41 +1,55 @@
 import 'package:flutter/widgets.dart';
 
+import 'navigator_introspector.dart';
+
 /// Tracks active route names across one or more navigators.
 ///
-/// Reading:
-///   - `currentRoute` — the route name from the most recently active
-///     navigator (last didPush/didPop/didReplace anywhere in the app).
-///   - `routeStack` — every navigator's current top-of-stack route, in
-///     order of last activity (most recent first). For AutoRoute tab
-///     setups this is `["MainRoute", "DomainsRoute"]` or similar —
-///     letting the agent tell apart screens that share the same outer
-///     route.
+/// Two data sources, merged at read time:
+///   1. [NavigatorIntrospector] walks the live Element tree at snapshot
+///      time and returns the top page name from every [Navigator] using
+///      page-based routing (declarative Navigator 2.0 — AutoRoute,
+///      GoRouter, etc.). This needs **no integrator wiring**.
+///   2. [createObserver] returns [NavigatorObserver]s for the integrator
+///      to attach to any imperative navigators they want covered. Used as
+///      a fallback for routes pushed via `Navigator.pushNamed` that have
+///      no Page representation.
 ///
-/// Wiring: pass [createObserver] into every `navigatorObservers` factory
-/// in your app — once for the root navigator, once for each nested
-/// (per-tab, per-drawer) navigator. A fresh observer is required per
-/// navigator because Flutter asserts that one observer is attached to at
-/// most one navigator at a time.
+/// Reading:
+///   - `currentRoute` — top-of-stack of the deepest live navigator, or
+///     the most recently fired observer if no introspectable navigators
+///     are present.
+///   - `routeStack` — every navigator's current top-of-stack route. From
+///     introspection (deepest-first) plus any observer-only routes that
+///     do not duplicate what introspection already found.
+///
+/// Wiring is optional. For an AutoRoute / GoRouter / page-based app you
+/// can skip [createObserver] entirely — introspection covers it.
 class RouteTracker {
   /// Insertion order doubles as "most recently active first" because we
   /// remove and re-insert an observer at the front whenever it fires.
   final List<_RouteTrackerObserver> _observers = <_RouteTrackerObserver>[];
 
-  /// Route name from the most recently active observer, or null when no
-  /// navigator has fired yet.
-  String? get currentRoute => _observers.isEmpty
-      ? null
-      : _observers.first.currentRoute;
+  String? get currentRoute {
+    final stack = routeStack;
+    return stack.isEmpty ? null : stack.first;
+  }
 
-  /// Current top-of-stack route name from every navigator that has at
-  /// least one observed event. Most recently active first.
-  List<String> get routeStack => _observers
-      .map((o) => o.currentRoute)
-      .whereType<String>()
-      .toList(growable: false);
+  List<String> get routeStack {
+    final introspected = NavigatorIntrospector.collectRouteStack();
+    final seen = introspected.toSet();
+    final observed = <String>[
+      for (final o in _observers)
+        if (o.currentRoute != null && seen.add(o.currentRoute!))
+          o.currentRoute!,
+    ];
+    return [...introspected, ...observed];
+  }
 
   /// Returns a fresh [NavigatorObserver] for one navigator. Call once
-  /// per navigator in your `navigatorObservers` factory.
+  /// per navigator in your `navigatorObservers` factory **if** you have
+  /// imperative routes (`Navigator.pushNamed` etc.) that introspection
+  /// cannot see. For page-based routers (AutoRoute, GoRouter) this is
+  /// optional — introspection already covers them.
   NavigatorObserver createObserver() => _RouteTrackerObserver(this);
 
   void _onActivity(_RouteTrackerObserver o) {
