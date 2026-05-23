@@ -1,4 +1,4 @@
-# melos_managed_dependency_overrides: flutter_probe
+# melos_managed_dependency_overrides: agent_wires_probe
 dependency_overrides:
-  flutter_probe:
-    path: ../../packages/flutter_probe
+  agent_wires_probe:
+    path: ../../packages/agent_wires_probe

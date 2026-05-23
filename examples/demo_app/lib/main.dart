@@ -1,9 +1,9 @@
 // examples/demo_app/lib/main.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_probe/flutter_probe.dart';
+import 'package:agent_wires_probe/agent_wires_probe.dart';
 
 void main() {
-  FlutterProbe.install();
+  AgentWiresProbe.install();
   runApp(const DemoApp());
 }
 
@@ -14,7 +14,7 @@ class DemoApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Demo',
-      navigatorObservers: [FlutterProbe.routeTracker.createObserver()],
+      navigatorObservers: [AgentWiresProbe.routeTracker.createObserver()],
       initialRoute: '/',
       routes: {
         '/': (_) => const HomeScreen(),

@@ -1,7 +1,7 @@
 # agent-wires
 
-[![flutter_probe](https://img.shields.io/pub/v/flutter_probe.svg?label=flutter_probe)](https://pub.dev/packages/flutter_probe)
-[![flutter_probe_mcp](https://img.shields.io/pub/v/flutter_probe_mcp.svg?label=flutter_probe_mcp)](https://pub.dev/packages/flutter_probe_mcp)
+[![agent_wires_probe](https://img.shields.io/pub/v/agent_wires_probe.svg?label=agent_wires_probe)](https://pub.dev/packages/agent_wires_probe)
+[![agent_wires_mcp](https://img.shields.io/pub/v/agent_wires_mcp.svg?label=agent_wires_mcp)](https://pub.dev/packages/agent_wires_mcp)
 [![CI](https://github.com/mohn93/agent-wires/actions/workflows/ci.yml/badge.svg)](https://github.com/mohn93/agent-wires/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -19,8 +19,8 @@ machine.
 
 | Package | Lives where | Purpose |
 |---|---|---|
-| [`flutter_probe`](packages/flutter_probe) | inside your Flutter app (dev dep) | Reads the live widget tree, synthesises gestures, captures logs + HTTP. Registers `ext.qa.*` service extensions. No-op in release. |
-| [`flutter_probe_mcp`](packages/flutter_probe_mcp)   | global CLI on your dev machine    | Boots the app, attaches to its VM service, exposes everything as MCP tools the agent can call. Also serves a local human-curation dashboard. |
+| [`agent_wires_probe`](packages/agent_wires_probe) | inside your Flutter app (dev dep) | Reads the live widget tree, synthesises gestures, captures logs + HTTP. Registers `ext.qa.*` service extensions. No-op in release. |
+| [`agent_wires_mcp`](packages/agent_wires_mcp)   | global CLI on your dev machine    | Boots the app, attaches to its VM service, exposes everything as MCP tools the agent can call. Also serves a local human-curation dashboard. |
 
 ## Quick start (under 10 minutes)
 
@@ -29,15 +29,15 @@ machine.
 ```yaml
 # pubspec.yaml
 dev_dependencies:
-  flutter_probe: ^0.1.0
+  agent_wires_probe: ^0.1.0
 ```
 
 ```dart
 // lib/main.dart
-import 'package:flutter_probe/flutter_probe.dart';
+import 'package:agent_wires_probe/agent_wires_probe.dart';
 
 void main() {
-  FlutterProbe.install();
+  AgentWiresProbe.install();
   runApp(MyApp());
 }
 
@@ -46,7 +46,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorObservers: [
-        FlutterProbe.routeTracker.createObserver(),
+        AgentWiresProbe.routeTracker.createObserver(),
       ],
       home: const HomePage(),
     );
@@ -57,7 +57,7 @@ class MyApp extends StatelessWidget {
 ### 2. Install the MCP server
 
 ```bash
-dart pub global activate flutter_probe_mcp
+dart pub global activate agent_wires_mcp
 ```
 
 ### 3. Point your MCP client at it
@@ -67,7 +67,7 @@ dart pub global activate flutter_probe_mcp
 {
   "mcpServers": {
     "flutter-qa": {
-      "command": "flutter_probe_mcp",
+      "command": "agent_wires_mcp",
       "args": [
         "run",
         "--project", "/path/to/your/flutter/app",
@@ -116,7 +116,7 @@ snapshot                       → confirm the new state
 ```
 
 The whole tool surface, with input schemas, is documented in the
-[`flutter_probe_mcp` README](packages/flutter_probe_mcp#tool-surface-18-tools).
+[`agent_wires_mcp` README](packages/agent_wires_mcp#tool-surface-18-tools).
 
 ## How it works
 
@@ -127,7 +127,7 @@ The whole tool surface, with input schemas, is documented in the
                          │ MCP (JSON-RPC over stdio)
                          ▼
 ┌─────────────────────────────────────────────────────┐
-│  flutter_probe_mcp  (Dart CLI, separate process)       │
+│  agent_wires_mcp  (Dart CLI, separate process)       │
 │    18 tools                                         │
 │    AST source-location proposals                    │
 │    per-project semantic map (.flutter_qa/map.json)  │
@@ -137,7 +137,7 @@ The whole tool surface, with input schemas, is documented in the
                          ▼
 ┌─────────────────────────────────────────────────────┐
 │  Your Flutter app (debug / profile mode)            │
-│    flutter_probe  (in-process)                   │
+│    agent_wires_probe  (in-process)                   │
 │      ext.qa.snapshot, .tap, .wait_for_route, …      │
 │      walks live Element tree                        │
 │      synthesises gestures via GestureBinding        │
@@ -155,8 +155,8 @@ running app's state.
 
 ```
 packages/
-├── flutter_probe/      runs INSIDE your app  — VM service extensions
-└── flutter_probe_mcp/        runs OUTSIDE the app  — MCP server CLI
+├── agent_wires_probe/      runs INSIDE your app  — VM service extensions
+└── agent_wires_mcp/        runs OUTSIDE the app  — MCP server CLI
 
 examples/
 └── demo_app/              tiny Flutter app for the e2e suite
@@ -172,11 +172,11 @@ docs/
 
 ```bash
 # Unit tests (fast, no device needed)
-( cd packages/flutter_probe && flutter test )    # ~75 tests
-( cd packages/flutter_probe_mcp   && dart test    )    # ~46 tests, 3 e2e skipped
+( cd packages/agent_wires_probe && flutter test )    # ~75 tests
+( cd packages/agent_wires_mcp   && dart test    )    # ~46 tests, 3 e2e skipped
 
 # End-to-end (requires a connected device / simulator)
-cd packages/flutter_probe_mcp
+cd packages/agent_wires_mcp
 FLUTTER_QA_E2E_DEVICE=<device-id> dart test --run-skipped --tags e2e
 ```
 
@@ -198,7 +198,7 @@ release.
 Stretch items the original design defers:
 
 - **`print()` capture** — apps using bare `print` (not `debugPrint`) need
-  to wrap `runApp` in a custom zone. A `FlutterProbe.installAndRunApp`
+  to wrap `runApp` in a custom zone. A `AgentWiresProbe.installAndRunApp`
   helper would do this automatically.
 - **WebView introspection** — `WKWebView` / Android WebView content is
   invisible to the probe. Companion JS bridge needed.
@@ -217,7 +217,7 @@ design and the brainstorming history.
 ## Contributing
 
 Issues and PRs welcome. The codebase is ~3500 lines of Dart split across
-two clean packages; the [`flutter_probe` README](packages/flutter_probe#how-the-snapshot-stays-small)
+two clean packages; the [`agent_wires_probe` README](packages/agent_wires_probe#how-the-snapshot-stays-small)
 explains the snapshot pipeline in three paragraphs.
 
 ## License

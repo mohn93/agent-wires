@@ -8,11 +8,11 @@ on:
 
 jobs:
   probe:
-    name: flutter_probe
+    name: agent_wires_probe
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/flutter_probe
+        working-directory: packages/agent_wires_probe
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -23,11 +23,11 @@ jobs:
       - run: flutter test --reporter=expanded
 
   mcp:
-    name: flutter_probe_mcp
+    name: agent_wires_mcp
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/flutter_probe_mcp
+        working-directory: packages/agent_wires_mcp
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
