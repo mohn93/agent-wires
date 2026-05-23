@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:agent_wires_mcp/src/map/semantic_map.dart';
 import 'package:agent_wires_mcp/src/mcp/protocol.dart';
 import 'package:agent_wires_mcp/src/runner/flutter_runner.dart';
+import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/tools/perception.dart';
 import 'package:agent_wires_mcp/src/tools/sync_tools.dart';
 import 'package:agent_wires_mcp/src/vm/client.dart';
@@ -25,10 +26,11 @@ void main() {
 
     test('snapshot tool returns elements from demo app home screen', () async {
       final vm = await VmClient.connect(harness.vmServiceUri);
+      final session = AppSession.attached(vm);
       final map = SemanticMap(projectRoot: '/tmp');
       final protocol = McpProtocol(tools: [
-        ...perceptionTools(vm, map),
-        ...syncTools(vm),
+        ...perceptionTools(session, map),
+        ...syncTools(session),
       ]);
       // Let the first frame finish painting before querying the tree.
       await protocol.handle({

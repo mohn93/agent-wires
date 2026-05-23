@@ -3,9 +3,9 @@ import 'dart:convert';
 import '../map/map_record.dart';
 import '../map/semantic_map.dart';
 import '../mcp/tool.dart';
-import '../vm/client.dart';
+import '../session/app_session.dart';
 
-List<Tool> memoryTools(SemanticMap map, {VmClient? vm}) => [
+List<Tool> memoryTools(SemanticMap map, {AppSession? session}) => [
       Tool(
         name: 'label_element',
         description:
@@ -37,13 +37,14 @@ List<Tool> memoryTools(SemanticMap map, {VmClient? vm}) => [
                 'error': 'fingerprint or element_id required',
               }));
             }
-            if (vm == null) {
+            if (session == null) {
               return _result(jsonEncode({
                 'success': false,
                 'error': 'fingerprint or element_id required',
               }));
             }
             // Resolve element_id via a live snapshot.
+            final vm = await session.ensureReady();
             final snapshot = await vm.callExtension('ext.qa.snapshot');
             final elements = <Map<String, dynamic>>[];
             final rawElements = snapshot['elements'];

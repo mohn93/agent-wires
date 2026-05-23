@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import '../mcp/tool.dart';
-import '../vm/client.dart';
+import '../session/app_session.dart';
 
-List<Tool> logsTools(VmClient vm) => [
+List<Tool> logsTools(AppSession session) => [
       Tool(
         name: 'get_network',
         description:
@@ -28,6 +28,7 @@ List<Tool> logsTools(VmClient vm) => [
           final limit = args['limit'];
           if (since is String && since.isNotEmpty) params['since'] = since;
           if (limit is num) params['limit'] = limit.toInt().toString();
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.get_network', params);
           return _result(jsonEncode(json));
         },
@@ -56,6 +57,7 @@ List<Tool> logsTools(VmClient vm) => [
           final limit = args['limit'];
           if (since is String && since.isNotEmpty) params['since'] = since;
           if (limit is num) params['limit'] = limit.toInt().toString();
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.get_logs', params);
           return _result(jsonEncode(json));
         },

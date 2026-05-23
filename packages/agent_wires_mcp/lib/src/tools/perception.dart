@@ -3,15 +3,16 @@ import '../enrich/snapshot_enricher.dart';
 import '../enrich/som_annotator.dart';
 import '../map/semantic_map.dart';
 import '../mcp/tool.dart';
-import '../vm/client.dart';
+import '../session/app_session.dart';
 
-List<Tool> perceptionTools(VmClient vm, SemanticMap map) => [
+List<Tool> perceptionTools(AppSession session, SemanticMap map) => [
       Tool(
         name: 'snapshot',
         description:
             'Returns the denoised semantic tree of the visible screen, enriched with proposals and persistent labels.',
         inputSchema: {'type': 'object', 'properties': {}},
         handler: (_) async {
+          final vm = await session.ensureReady();
           final raw = await vm.callExtension('ext.qa.snapshot');
           final enriched = SnapshotEnricher.enrich(raw: raw, map: map);
           return _toolResult(jsonEncode(enriched));
@@ -32,6 +33,7 @@ List<Tool> perceptionTools(VmClient vm, SemanticMap map) => [
           if (id == null) {
             return _toolError('element_id required');
           }
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.inspect', {'element_id': id});
           return _toolResult(jsonEncode(json));
         },
@@ -45,6 +47,7 @@ List<Tool> perceptionTools(VmClient vm, SemanticMap map) => [
           'properties': {'annotated': <String, dynamic>{'type': 'boolean'}},
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final shotJson = await vm.callExtension('ext.qa.screenshot');
           final annotated = args['annotated'] == true;
           if (!annotated) {

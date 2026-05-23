@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:agent_wires_mcp/src/map/map_record.dart';
 import 'package:agent_wires_mcp/src/map/semantic_map.dart';
+import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/tools/memory_tools.dart';
 import 'package:agent_wires_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
@@ -39,7 +40,8 @@ void main() {
     Map<String, dynamic> args, {
     VmClient? vm,
   }) async {
-    final tool = memoryTools(map, vm: vm).firstWhere((t) => t.name == name);
+    final session = vm == null ? null : AppSession.attached(vm);
+    final tool = memoryTools(map, session: session).firstWhere((t) => t.name == name);
     final result = await tool.handler(args);
     final text = ((result['content'] as List).first as Map)['text'] as String;
     return jsonDecode(text) as Map<String, dynamic>;

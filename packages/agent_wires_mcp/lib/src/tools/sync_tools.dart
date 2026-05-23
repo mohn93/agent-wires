@@ -1,8 +1,8 @@
 import 'dart:convert';
 import '../mcp/tool.dart';
-import '../vm/client.dart';
+import '../session/app_session.dart';
 
-List<Tool> syncTools(VmClient vm) => [
+List<Tool> syncTools(AppSession session) => [
       Tool(
         name: 'wait_for_idle',
         description: 'Returns when no pending frames, no running animations, and no in-flight HTTP. Bounded by timeout_ms (default 10000).',
@@ -11,6 +11,7 @@ List<Tool> syncTools(VmClient vm) => [
           'properties': {'timeout_ms': {'type': 'integer'}},
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.wait_for_idle', {
             if (args['timeout_ms'] != null) 'timeout_ms': args['timeout_ms'].toString(),
           });
@@ -29,6 +30,7 @@ List<Tool> syncTools(VmClient vm) => [
           'required': ['route'],
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.wait_for_route', {
             'route': args['route'],
             if (args['timeout_ms'] != null) 'timeout_ms': args['timeout_ms'].toString(),
@@ -48,6 +50,7 @@ List<Tool> syncTools(VmClient vm) => [
           },
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.wait_for_element', {
             if (args['label'] != null) 'label': args['label'],
             if (args['role'] != null) 'role': args['role'],

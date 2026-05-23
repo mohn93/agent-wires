@@ -1,8 +1,8 @@
 import 'dart:convert';
 import '../mcp/tool.dart';
-import '../vm/client.dart';
+import '../session/app_session.dart';
 
-List<Tool> actionTools(VmClient vm) => [
+List<Tool> actionTools(AppSession session) => [
       Tool(
         name: 'tap',
         description: 'Synthesizes a tap at the center of the given element.',
@@ -12,6 +12,7 @@ List<Tool> actionTools(VmClient vm) => [
           'required': ['element_id'],
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.tap', {
             'element_id': args['element_id'],
           });
@@ -30,6 +31,7 @@ List<Tool> actionTools(VmClient vm) => [
           'required': ['element_id'],
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.long_press', {
             'element_id': args['element_id'],
             if (args['duration_ms'] != null) 'duration_ms': args['duration_ms'].toString(),
@@ -52,6 +54,7 @@ List<Tool> actionTools(VmClient vm) => [
           'required': ['from_x', 'from_y', 'to_x', 'to_y'],
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.swipe', {
             'from_x': args['from_x'].toString(),
             'from_y': args['from_y'].toString(),
@@ -74,6 +77,7 @@ List<Tool> actionTools(VmClient vm) => [
           'required': ['element_id', 'text'],
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.enter_text', {
             'element_id': args['element_id'],
             'text': args['text'],
@@ -90,6 +94,7 @@ List<Tool> actionTools(VmClient vm) => [
           'required': ['element_id'],
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.clear_text', {
             'element_id': args['element_id'],
           });
@@ -112,6 +117,7 @@ List<Tool> actionTools(VmClient vm) => [
           'required': ['direction'],
         },
         handler: (args) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.scroll', {
             'direction': args['direction'],
             if (args['distance'] != null) 'distance': args['distance'].toString(),
@@ -125,6 +131,7 @@ List<Tool> actionTools(VmClient vm) => [
         description: 'Equivalent to Android back button — pops the current route.',
         inputSchema: {'type': 'object', 'properties': {}},
         handler: (_) async {
+          final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.press_back');
           return _result(jsonEncode(json));
         },

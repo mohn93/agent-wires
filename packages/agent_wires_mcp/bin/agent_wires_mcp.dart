@@ -5,8 +5,9 @@ import 'package:agent_wires_mcp/src/dashboard/server.dart';
 import 'package:agent_wires_mcp/src/map/semantic_map.dart';
 import 'package:agent_wires_mcp/src/mcp/protocol.dart';
 import 'package:agent_wires_mcp/src/mcp/transport.dart';
-import 'package:agent_wires_mcp/src/runner/flutter_runner.dart';
+import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/tools/action_tools.dart';
+import 'package:agent_wires_mcp/src/tools/lifecycle_tools.dart';
 import 'package:agent_wires_mcp/src/tools/logs_tools.dart';
 import 'package:agent_wires_mcp/src/tools/memory_tools.dart';
 import 'package:agent_wires_mcp/src/tools/perception.dart';
@@ -91,25 +92,22 @@ Future<void> _runRun(List<String> args) async {
     for (final d in dartDefines) '--dart-define=$d',
   ];
 
-  final runner = FlutterRunner(
+  final map = SemanticMap(projectRoot: mapRoot);
+  await map.load();
+
+  // Construct a lazy session — flutter does NOT start here. The MCP stdio
+  // transport opens immediately below so Claude Code's `initialize` handshake
+  // resolves in milliseconds; the agent then calls `boot_app` (or any other
+  // tool, which auto-boots) when it actually wants the app running.
+  final session = AppSession.lazy(
     workingDirectory: project,
     deviceId: parsed['device'] as String?,
     flutterArgs: extraArgs,
   );
-  stderr.writeln('agent_wires_mcp: booting Flutter app in $project ...');
-  await runner.start();
-  stderr.writeln('agent_wires_mcp: VM service @ ${runner.vmServiceUri}');
+  stderr.writeln(
+      'agent_wires_mcp: serving MCP (app will boot on first tool call).');
 
-  final map = SemanticMap(projectRoot: mapRoot);
-  await map.load();
-
-  final vm = await VmClient.connect(runner.vmServiceUri);
-  stderr.writeln('agent_wires_mcp: attached to QA isolate, serving MCP.');
-
-  await _serveStdio(vm: vm, map: map, onShutdown: () async {
-    await vm.dispose();
-    await runner.stop();
-  });
+  await _serveStdio(session: session, map: map, onShutdown: session.dispose);
 }
 
 Future<void> _runServe(List<String> args) async {
@@ -145,23 +143,25 @@ Future<void> _runServe(List<String> args) async {
   final map = SemanticMap(projectRoot: parsed['map-root'] as String);
   await map.load();
   final vm = await VmClient.connect(Uri.parse(attach));
-  await _serveStdio(vm: vm, map: map, onShutdown: () async {
-    await vm.dispose();
-  });
+  final session = AppSession.attached(vm);
+  await _serveStdio(session: session, map: map, onShutdown: session.dispose);
 }
 
 Future<void> _serveStdio({
-  required VmClient vm,
+  required AppSession session,
   required SemanticMap map,
   required Future<void> Function() onShutdown,
 }) async {
   final transport = StdioTransport(input: stdin, output: stdout);
   final protocol = McpProtocol(tools: [
-    ...perceptionTools(vm, map),
-    ...actionTools(vm),
-    ...syncTools(vm),
-    ...memoryTools(map, vm: vm),
-    ...logsTools(vm),
+    // Lifecycle tools first so they appear at the top of `tools/list` —
+    // agents discover boot_app before reaching for perception/action tools.
+    ...lifecycleTools(session),
+    ...perceptionTools(session, map),
+    ...actionTools(session),
+    ...syncTools(session),
+    ...memoryTools(map, session: session),
+    ...logsTools(session),
   ]);
 
   late StreamSubscription sigint;

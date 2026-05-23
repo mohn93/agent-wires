@@ -1,10 +1,13 @@
+import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/tools/action_tools.dart';
 import 'package:agent_wires_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
 
+AppSession _session() => AppSession.attached(_FakeVm());
+
 void main() {
   test('actionTools returns 7 tools with the expected names', () {
-    final tools = actionTools(_FakeVm());
+    final tools = actionTools(_session());
     final names = tools.map((t) => t.name).toSet();
     expect(names, {
       'tap', 'long_press', 'swipe', 'enter_text', 'clear_text', 'scroll', 'press_back',
@@ -12,18 +15,18 @@ void main() {
   });
 
   test('tap schema requires element_id', () {
-    final tap = actionTools(_FakeVm()).firstWhere((t) => t.name == 'tap');
+    final tap = actionTools(_session()).firstWhere((t) => t.name == 'tap');
     expect((tap.inputSchema['required'] as List), contains('element_id'));
   });
 
   test('swipe schema requires from_x/from_y/to_x/to_y', () {
-    final swipe = actionTools(_FakeVm()).firstWhere((t) => t.name == 'swipe');
+    final swipe = actionTools(_session()).firstWhere((t) => t.name == 'swipe');
     final required = (swipe.inputSchema['required'] as List).cast<String>();
     expect(required, containsAll(['from_x', 'from_y', 'to_x', 'to_y']));
   });
 
   test('enter_text schema requires element_id and text', () {
-    final et = actionTools(_FakeVm()).firstWhere((t) => t.name == 'enter_text');
+    final et = actionTools(_session()).firstWhere((t) => t.name == 'enter_text');
     final required = (et.inputSchema['required'] as List).cast<String>();
     expect(required, containsAll(['element_id', 'text']));
   });

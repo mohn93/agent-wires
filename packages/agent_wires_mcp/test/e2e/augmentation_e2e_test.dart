@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:agent_wires_mcp/src/map/semantic_map.dart';
 import 'package:agent_wires_mcp/src/mcp/protocol.dart';
 import 'package:agent_wires_mcp/src/runner/flutter_runner.dart';
+import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/tools/action_tools.dart';
 import 'package:agent_wires_mcp/src/tools/memory_tools.dart';
 import 'package:agent_wires_mcp/src/tools/perception.dart';
@@ -26,11 +27,12 @@ void main() {
       map = SemanticMap(projectRoot: tmp.path);
       await harness.start();
       vm = await VmClient.connect(harness.vmServiceUri);
+      final session = AppSession.attached(vm);
       protocol = McpProtocol(tools: [
-        ...perceptionTools(vm, map),
-        ...actionTools(vm),
-        ...syncTools(vm),
-        ...memoryTools(map, vm: vm),
+        ...perceptionTools(session, map),
+        ...actionTools(session),
+        ...syncTools(session),
+        ...memoryTools(map, session: session),
       ]);
     });
 

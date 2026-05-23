@@ -28,6 +28,10 @@ class FlutterRunner {
   Uri get vmServiceUri => _vmServiceUri ??
       (throw StateError('FlutterRunner.start() has not completed'));
 
+  /// Non-throwing variant of [vmServiceUri] for callers that legitimately want
+  /// to peek before [start] has resolved (e.g. status tools).
+  Uri? get vmServiceUriOrNull => _vmServiceUri;
+
   /// Spawns `flutter run` / `flutter test` and blocks until the VM service URI
   /// is reported (or [timeout] elapses).
   Future<void> start({Duration timeout = const Duration(minutes: 5)}) async {
