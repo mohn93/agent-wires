@@ -13,7 +13,14 @@ class ScreenshotExtension {
     Map<String, String> params,
   ) async {
     try {
-      final boundary = _findRootRepaintBoundary();
+      // First-call race: the agent may screenshot before the first frame has
+      // rasterized (no rootElement yet, or no RepaintBoundary yet). Wait one
+      // end-of-frame and retry once before failing.
+      var boundary = _findRootRepaintBoundary();
+      if (boundary == null) {
+        await WidgetsBinding.instance.endOfFrame;
+        boundary = _findRootRepaintBoundary();
+      }
       if (boundary == null) {
         return developer.ServiceExtensionResponse.error(
           developer.ServiceExtensionResponse.extensionError,
