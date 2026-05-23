@@ -59,9 +59,15 @@ class InspectExtension {
   }
 
   /// Walks descendants of [root] up to [maxDepth] levels. Returns one entry
-  /// per element with depth, widget type, and visible text when present.
-  /// Capped at 500 entries to avoid blowing up on deep Material/Cupertino
-  /// subtrees (each interactive widget can stack 20+ plumbing layers).
+  /// per element with depth, widget type, visible text when present, and —
+  /// for [CustomPaint] descendants — the `painter` runtime type and `size`.
+  /// The CustomPaint metadata lets the agent diagnose "this region is
+  /// drawn pixels, I can't address inner parts" without having to guess
+  /// from a Listener that wraps a Canvas (the agent flagged this for the
+  /// PrecisionReactiveSlider's 20px thumb).
+  ///
+  /// Capped at 500 entries to handle deep Material/Cupertino subtrees
+  /// (each interactive widget can stack 20+ plumbing layers).
   static List<Map<String, dynamic>> _collectDescendants(
     Element root, {
     required int maxDepth,
@@ -77,6 +83,20 @@ class InspectExtension {
         };
         final text = _extractText(e.widget);
         if (text != null && text.isNotEmpty) entry['visible_text'] = text;
+        final w = e.widget;
+        if (w is CustomPaint) {
+          if (w.painter != null) {
+            entry['painter'] = w.painter.runtimeType.toString();
+          }
+          if (w.foregroundPainter != null) {
+            entry['foreground_painter'] =
+                w.foregroundPainter.runtimeType.toString();
+          }
+          final ro = e.renderObject;
+          if (ro is RenderBox && ro.hasSize) {
+            entry['size'] = '${ro.size.width}x${ro.size.height}';
+          }
+        }
         out.add(entry);
       }
       e.visitChildren((c) => visit(c, depth + 1));

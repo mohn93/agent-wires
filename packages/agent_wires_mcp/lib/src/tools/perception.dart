@@ -59,7 +59,12 @@ List<Tool> perceptionTools(AppSession session, SemanticMap map) => [
             'CustomPaint." Use when `snapshot` shows something you do not '
             'understand or when you need a specific widget property '
             '(e.g. "is this Checkbox checked?"). Each descendant has '
-            '{depth, widget_type, visible_text?}.\n\n'
+            '{depth, widget_type, visible_text?}. CustomPaint descendants '
+            'also include `painter` (the painter\'s runtime type) and '
+            '`size` — if you see `painter: SomeSliderPainter`, the region '
+            'is drawn pixels and you cannot address the thumb/canvas '
+            'children directly. Tell the user; they need to add a '
+            '`Semantics` or `Key` to the source widget.\n\n'
             'Pass `include_descendants: false` to skip the subtree, or '
             '`descendant_depth: N` to go deeper (capped at 100 entries to '
             'prevent blowups).',

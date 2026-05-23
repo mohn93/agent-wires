@@ -76,6 +76,53 @@ void main() {
         reason: 'descendants should expose the inner Text widget');
   });
 
+  testWidgets(
+      'inspect surfaces painter+size for CustomPaint descendants so agents '
+      'can diagnose unaddressable pixel regions',
+      (tester) async {
+    // Listener wraps a CustomPaint — exactly the shape the agent flagged
+    // for the PrecisionReactiveSlider (Listener handles drags, CustomPaint
+    // draws the thumb pixels). The agent needs to see "painter: _MyPainter"
+    // to know the thumb is unaddressable without integrator help.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Listener(
+          onPointerDown: (_) {},
+          child: CustomPaint(
+            painter: _MarkerPainter(),
+            size: const Size(200, 50),
+          ),
+        ),
+      ),
+    ));
+    final snapResp =
+        await SnapshotExtension.handle('ext.qa.snapshot', const {});
+    final snap = jsonDecode(snapResp.result!) as Map<String, dynamic>;
+    final all = [
+      ...((snap['elements'] as List?) ?? const []).cast<Map<String, dynamic>>(),
+      ...((snap['unresolved'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>(),
+    ];
+    // Multiple Listeners exist (Navigator/Overlay each have one) — take the
+    // last, which corresponds to ours wrapping the CustomPaint.
+    final listener = all
+        .where((e) => (e['widget_type'] as String?) == 'Listener')
+        .last;
+    final resp = await InspectExtension.handle('ext.qa.inspect', {
+      'element_id': listener['id'] as String,
+      'descendant_depth': '6',
+    });
+    final body = jsonDecode(resp.result!) as Map<String, dynamic>;
+    final descendants =
+        (body['descendants'] as List).cast<Map<String, dynamic>>();
+    final painted = descendants.firstWhere(
+      (d) => d['widget_type'] == 'CustomPaint' && d['painter'] != null,
+      orElse: () => <String, dynamic>{},
+    );
+    expect(painted['painter'], '_MarkerPainter');
+    expect(painted['size'], '200.0x50.0');
+  });
+
   testWidgets('inspect skips descendants when include_descendants:false',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
@@ -98,4 +145,11 @@ void main() {
     final body = jsonDecode(resp.result!) as Map<String, dynamic>;
     expect(body.containsKey('descendants'), isFalse);
   });
+}
+
+class _MarkerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {}
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }

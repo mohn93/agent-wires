@@ -101,6 +101,39 @@ The probe runs three passes:
 Output of a real production sign-in screen: 99 → 16 elements, each one a
 single tappable target the agent can name.
 
+## Making custom-painted widgets agent-friendly
+
+Anything drawn inside a `CustomPaint` / `Canvas` (custom sliders, charts,
+gauges, signature pads) has **no widget tree** for the probe to walk —
+the thumb of a 20px circle painted into a `Canvas` is just pixels. An
+agent calling `inspect` on the parent will see `painter:
+PrecisionReactiveSliderPainter, size: 320.0x60.0` and know the region
+is unaddressable, but it can't synthesise a meaningful tap on the
+specific sub-region.
+
+Two integrator-side fixes make these widgets driveable:
+
+```dart
+// 1. Wrap the interactive piece in Semantics with a button: true label.
+//    The probe surfaces it as a named tappable element.
+Semantics(
+  button: true,
+  label: 'slider thumb',
+  child: CustomPaint(painter: thumbPainter, size: const Size(20, 20)),
+)
+
+// 2. Or attach a Key — the agent can target it via the element's
+//    `key_value` field in the snapshot.
+CustomPaint(
+  key: const ValueKey('slider-thumb'),
+  painter: thumbPainter,
+  size: const Size(20, 20),
+)
+```
+
+If neither is possible, the agent will fall back to coordinate-based
+`swipe` or `tap` using the parent's `bounds` — workable but pixel-fragile.
+
 ## License
 
 [MIT](https://github.com/mohn93/agent-wires/blob/main/LICENSE)
