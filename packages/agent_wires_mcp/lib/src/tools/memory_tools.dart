@@ -9,7 +9,12 @@ List<Tool> memoryTools(SemanticMap map, {AppSession? session}) => [
       Tool(
         name: 'label_element',
         description:
-            'Persists a human label for an element. Provide either `fingerprint` (preferred — stable across snapshots) or `element_id` (from a recent snapshot).',
+            'Persists a human-readable name for an element so future '
+            'snapshots show it as `persistent_label`. Use sparingly — only '
+            'when the auto-inferred `label` is ambiguous or missing and you '
+            'want to refer to this element by a stable name across sessions. '
+            'Provide either `fingerprint` (preferred — stable across snapshots '
+            'and rebuilds) or `element_id` from the latest snapshot.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -91,7 +96,10 @@ List<Tool> memoryTools(SemanticMap map, {AppSession? session}) => [
       ),
       Tool(
         name: 'get_labels',
-        description: 'Returns persistent labels (entries with human_label set). Pass `route` to filter by screen_context.',
+        description:
+            'Returns all persistent labels you have set via `label_element`. '
+            'Pass `route` to scope to one screen. Useful at session start to '
+            'remind yourself what custom names exist before snapshotting.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -113,7 +121,10 @@ List<Tool> memoryTools(SemanticMap map, {AppSession? session}) => [
       ),
       Tool(
         name: 'recall',
-        description: 'Case-insensitive substring search over human labels.',
+        description:
+            'Case-insensitive substring search over your persistent labels. '
+            'Use when you remember labeling something but not the exact '
+            'screen ("find anything I labeled \'submit\'").',
         inputSchema: {
           'type': 'object',
           'properties': {

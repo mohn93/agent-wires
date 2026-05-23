@@ -7,7 +7,14 @@ List<Tool> logsTools(AppSession session) => [
       Tool(
         name: 'get_network',
         description:
-            'Returns recent HTTP exchanges (method, url, status_code, duration_ms, error). Use `since` (ISO-8601 timestamp from a previous response\'s `cursor`) to drain only new exchanges; otherwise the most recent `limit` are returned. Useful for watching what a tap triggered on the wire.',
+            'Returns recent HTTP exchanges (method, url, status_code, '
+            'duration_ms, error). Best used right after an action to see '
+            'what the tap triggered on the wire ("did Sign In actually '
+            'POST /login?"). Pagination: pass `since` = the `cursor` from '
+            'the previous response to drain only new exchanges; otherwise '
+            'the most recent `limit` (default 100) are returned. Only HTTP '
+            'going through Dart\'s HttpClient is captured; native iOS/Android '
+            'network calls and WebSocket frames are not.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -36,7 +43,14 @@ List<Tool> logsTools(AppSession session) => [
       Tool(
         name: 'get_logs',
         description:
-            'Returns recent runtime log entries (debugPrint output, FlutterError errors, uncaught zone errors). Use `since` (ISO-8601 timestamp from a previous response\'s `cursor` field) to fetch only new entries; otherwise the most recent `limit` entries are returned.',
+            'Returns recent runtime log entries (debugPrint output, '
+            'FlutterError errors, uncaught zone errors). Use this when '
+            'something appears stuck or broken — the app may have logged a '
+            'failure that explains what you are seeing on screen. '
+            'Pagination: pass `since` = the `cursor` from a previous '
+            'response; otherwise the most recent `limit` (default 200) are '
+            'returned. Plain `print()` calls outside the probe\'s zone are '
+            'NOT captured — only `debugPrint`.',
         inputSchema: {
           'type': 'object',
           'properties': {

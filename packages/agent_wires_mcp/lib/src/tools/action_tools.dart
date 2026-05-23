@@ -5,7 +5,11 @@ import '../session/app_session.dart';
 List<Tool> actionTools(AppSession session) => [
       Tool(
         name: 'tap',
-        description: 'Synthesizes a tap at the center of the given element.',
+        description:
+            'Synthesizes a tap at the center of an element. Pass the '
+            '`element_id` from the latest `snapshot` (ids expire after a '
+            'frame). After tapping, call `wait_for_idle` or '
+            '`wait_for_route`, then `snapshot` again before the next action.',
         inputSchema: {
           'type': 'object',
           'properties': {'element_id': {'type': 'string'}},
@@ -21,7 +25,10 @@ List<Tool> actionTools(AppSession session) => [
       ),
       Tool(
         name: 'long_press',
-        description: 'Holds a press at the center of an element for duration_ms (default 600).',
+        description:
+            'Holds a press at the center of an element for `duration_ms` '
+            '(default 600). Use for context menus, drag handles, or any '
+            'gesture that requires holding. For a normal tap use `tap`.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -41,7 +48,11 @@ List<Tool> actionTools(AppSession session) => [
       ),
       Tool(
         name: 'swipe',
-        description: 'Drags from (from_x, from_y) to (to_x, to_y) in global coordinates.',
+        description:
+            'Drags from (from_x, from_y) to (to_x, to_y) in global screen '
+            'coordinates. Use this for: dismissing sheets, swipe-to-delete, '
+            'page-view paging, slider dragging. For scrolling a list, prefer '
+            '`scroll` — it finds the scrollable for you.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -67,7 +78,12 @@ List<Tool> actionTools(AppSession session) => [
       ),
       Tool(
         name: 'enter_text',
-        description: 'Focuses the TextField at element_id and replaces its contents.',
+        description:
+            'Focuses a TextField (`role: textfield`) and replaces its '
+            'contents with `text`. If you do not see a textfield in '
+            '`snapshot.elements[]`, check `snapshot.unresolved[]` — hidden '
+            'text inputs (pin codes, autocomplete) often live there. After '
+            'typing, call `wait_for_idle` before the next action.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -87,7 +103,11 @@ List<Tool> actionTools(AppSession session) => [
       ),
       Tool(
         name: 'clear_text',
-        description: 'Clears the TextField at element_id.',
+        description:
+            'Clears a TextField. Use before `enter_text` if you want to '
+            'replace existing content, though `enter_text` already replaces '
+            'contents by default — this is mainly for "leave the field '
+            'empty" scenarios.',
         inputSchema: {
           'type': 'object',
           'properties': {'element_id': {'type': 'string'}},
@@ -103,7 +123,13 @@ List<Tool> actionTools(AppSession session) => [
       ),
       Tool(
         name: 'scroll',
-        description: 'Scrolls the nearest visible Scrollable (or one inside element_id).',
+        description:
+            'Scrolls the nearest visible Scrollable in `direction` (up | '
+            'down | left | right) by `distance` logical pixels (default 300). '
+            'If you pass `element_id`, scrolls the Scrollable inside that '
+            'element instead — useful when multiple lists are on screen. '
+            'Always re-`snapshot` after scrolling; new elements come into '
+            'view and old ones leave.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -128,7 +154,12 @@ List<Tool> actionTools(AppSession session) => [
       ),
       Tool(
         name: 'press_back',
-        description: 'Equivalent to Android back button — pops the current route.',
+        description:
+            'Equivalent to the Android system back button — pops the current '
+            'route in the navigator stack. On iOS this still works because '
+            'it uses the Navigator API directly, not the platform back '
+            'channel. Use this instead of tapping a custom back arrow when '
+            'you just want to go up one screen.',
         inputSchema: {'type': 'object', 'properties': {}},
         handler: (_) async {
           final vm = await session.ensureReady();

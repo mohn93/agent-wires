@@ -9,7 +9,14 @@ List<Tool> perceptionTools(AppSession session, SemanticMap map) => [
       Tool(
         name: 'snapshot',
         description:
-            'Returns the denoised semantic tree of the visible screen, enriched with proposals and persistent labels.',
+            'PRIMARY PERCEPTION TOOL — call this first, and again after every '
+            'action. Returns a denoised semantic tree of the visible screen: '
+            'every actionable element gets a stable `element_id`, a `role` '
+            '(button | textfield | tappable | ...), a human `label`, and '
+            'on-screen `bounds`. Pass those `element_id`s to tap, enter_text, '
+            'long_press, etc. Prefer this over `screenshot` — it is smaller, '
+            'faster, and gives you ids you can act on. Element ids are only '
+            'valid until the next frame; re-snapshot after any state change.',
         inputSchema: {'type': 'object', 'properties': {}},
         handler: (_) async {
           final vm = await session.ensureReady();
@@ -20,7 +27,13 @@ List<Tool> perceptionTools(AppSession session, SemanticMap map) => [
       ),
       Tool(
         name: 'inspect',
-        description: 'Returns full widget chain and properties for a single element_id.',
+        description:
+            'Drills into one element by `element_id` — returns the full '
+            'widget chain (ancestors), properties, render-object info, and '
+            'source location. Use this when `snapshot` shows something you '
+            'do not understand or when you need a specific widget property '
+            '(e.g. "is this Checkbox actually checked?"). Not needed for '
+            'normal interaction — `snapshot` already has enough to tap things.',
         inputSchema: {
           'type': 'object',
           'properties': {
@@ -41,7 +54,16 @@ List<Tool> perceptionTools(AppSession session, SemanticMap map) => [
       Tool(
         name: 'screenshot',
         description:
-            'Returns a base64-encoded PNG of the current screen. If annotated=true, overlays numbered Set-of-Mark boxes using the current snapshot.',
+            'Returns raw pixels (base64 PNG) of the current frame. '
+            'ALMOST ALWAYS PREFER `snapshot` INSTEAD — snapshot gives you '
+            'structured element_ids you can act on; screenshot gives you '
+            'pixels you have to vision-parse. Use screenshot only when (a) '
+            'you need to show the user what the screen looks like, (b) you '
+            'need pixel-perfect details like colors or rendered text, or (c) '
+            'something is drawn via Canvas/Skia and has no widget semantics '
+            'so `snapshot` cannot see it. If showing to a human, pass '
+            '`annotated: true` to overlay numbered Set-of-Mark boxes matching '
+            'the latest snapshot — much more useful than raw pixels.',
         inputSchema: {
           'type': 'object',
           'properties': {'annotated': <String, dynamic>{'type': 'boolean'}},
