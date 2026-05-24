@@ -37,7 +37,10 @@ class AppSession {
         _state = AppState.ready;
 
   final String? _workingDirectory;
-  final String? _deviceId;
+  // Mutable so the agent can pick a device per-boot (e.g. after calling
+  // list_devices and asking the user). Set via [selectDevice] before
+  // ensureReady.
+  String? _deviceId;
   final List<String> _flutterArgs;
   final bool _attached;
 
@@ -62,6 +65,22 @@ class AppSession {
   /// so it persists after the runner is disposed — that's exactly when the
   /// agent needs to see what flutter was doing when the boot failed.
   String? get latestProgress => _latestProgress;
+
+  /// Selects a device for the next boot. Only valid in lazy mode and when
+  /// the session is not currently `ready` (the existing flutter process
+  /// can't be retargeted to a different device — caller must `stop_app`
+  /// first). Passing null clears the pin and lets flutter pick.
+  void selectDevice(String? deviceId) {
+    if (_attached) {
+      throw StateError('attached AppSession has no device to select');
+    }
+    if (_state == AppState.ready) {
+      throw StateError(
+        'cannot change device while the app is running; call stop_app first',
+      );
+    }
+    _deviceId = deviceId;
+  }
 
   /// Returns the connected [VmClient]. If the session is lazy and hasn't been
   /// booted yet (or a previous boot timed out / was stopped), this kicks off

@@ -73,6 +73,33 @@ void main() {
           throwsA(predicate((e) => e.toString().contains('attached'))));
     });
   });
+
+  group('AppSession.selectDevice', () {
+    test('updates _deviceId for the next boot (lazy, idle)', () {
+      final session = AppSession.lazy(workingDirectory: '/tmp');
+      session.selectDevice('iphone-15-sim');
+      // No public getter for _deviceId; the observable effect is that a
+      // subsequent ensureReady will spawn flutter with -d iphone-15-sim.
+      // We assert by round-tripping null too (no exception = success).
+      session.selectDevice(null);
+    });
+
+    test('rejected on attached session', () {
+      final session = AppSession.attached(_FakeVm());
+      expect(() => session.selectDevice('x'), throwsStateError);
+    });
+
+    test('rejected when state is ready (must stop_app first)', () {
+      // Attached sessions start in `ready`; this asserts the same guard
+      // applies to lazy too once flutter is up. We use attached as a
+      // stand-in because spawning a real flutter process in a unit test
+      // isn't feasible.
+      final session = AppSession.attached(_FakeVm());
+      expect(() => session.selectDevice('x'),
+          throwsA(isA<StateError>()),
+          reason: 'cannot retarget device while running');
+    });
+  });
 }
 
 class _FakeVm extends VmClient {

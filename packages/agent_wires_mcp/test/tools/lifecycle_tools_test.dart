@@ -6,9 +6,10 @@ import 'package:agent_wires_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('lifecycleTools exposes all five lifecycle tools', () {
+  test('lifecycleTools exposes all six lifecycle tools', () {
     final tools = lifecycleTools(AppSession.attached(_FakeVm()));
     expect(tools.map((t) => t.name).toSet(), {
+      'list_devices',
       'boot_app',
       'app_status',
       'stop_app',

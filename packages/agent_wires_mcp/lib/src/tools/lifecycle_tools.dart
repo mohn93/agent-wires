@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../mcp/tool.dart';
+import '../runner/device_lister.dart';
 import '../session/app_session.dart';
 
 /// Tools that govern the app lifecycle itself — boot it, query state, stop it.
@@ -10,6 +11,30 @@ import '../session/app_session.dart';
 /// before reaching for perception/action tools. Description text instructs the
 /// agent to call `boot_app` once at the start of a session.
 List<Tool> lifecycleTools(AppSession session) => [
+      Tool(
+        name: 'list_devices',
+        description:
+            'Returns every device flutter can target right now — connected '
+            'phones, booted simulators, macOS desktop, Chrome. Each entry '
+            'is `{id, name, platform, is_emulator, is_supported, sdk}`. '
+            'Call this BEFORE boot_app when more than one device might be '
+            'available (a plugged-in phone PLUS a booted simulator is the '
+            'classic 10-min-hang trigger — flutter picks the phone and '
+            'stalls on signing). Ask the user which to use, then pass that '
+            'id to `boot_app({device_id: "..."})`. Safe to call any time; '
+            'cheap (~1s).',
+        inputSchema: {'type': 'object', 'properties': {}},
+        handler: (_) async {
+          try {
+            final devices = await DeviceLister.list();
+            return _toolResult(jsonEncode({
+              'devices': devices.map((d) => d.toJson()).toList(),
+            }));
+          } catch (e) {
+            return _toolError('list_devices failed: $e');
+          }
+        },
+      ),
       Tool(
         name: 'boot_app',
         description:
@@ -21,6 +46,12 @@ List<Tool> lifecycleTools(AppSession session) => [
             'service URI. Idempotent — if already booted, returns '
             'immediately. If a prior boot timed out or was stopped, just '
             'call boot_app again; it will reset and retry.\n\n'
+            'DEVICE SELECTION: If more than one device might be available '
+            '(plugged-in phone + booted simulator is the classic case), '
+            'call `list_devices` first and ASK THE USER which to use; '
+            'flutter\'s default pick can stall for minutes on signing for '
+            'a physical device. Pass the chosen id as `device_id`. The '
+            'selection sticks until the next stop_app.\n\n'
             'For long boots, pass `wait: false` — boot_app returns '
             'immediately with state="booting", and you can poll '
             '`app_status` to watch `latest_progress` ("Running Xcode '
@@ -37,6 +68,14 @@ List<Tool> lifecycleTools(AppSession session) => [
         inputSchema: {
           'type': 'object',
           'properties': {
+            'device_id': {
+              'type': 'string',
+              'description':
+                  'Device id from `list_devices`. Overrides any default '
+                  'set at MCP registration time. Sticks until the next '
+                  'stop_app. Omit to use whatever was already configured '
+                  '(or let flutter pick).',
+            },
             'wait': {
               'type': 'boolean',
               'description':
@@ -49,6 +88,14 @@ List<Tool> lifecycleTools(AppSession session) => [
           },
         },
         handler: (args) async {
+          final deviceId = args['device_id'];
+          if (deviceId is String && deviceId.isNotEmpty) {
+            try {
+              session.selectDevice(deviceId);
+            } catch (e) {
+              return _toolError('device selection rejected: $e');
+            }
+          }
           final wait = args['wait'] != false;
           if (wait) {
             try {
