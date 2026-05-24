@@ -51,9 +51,32 @@ void main() {
     await tester.pumpAndSettle();
 
     final stack = NavigatorIntrospector.collectRouteStack();
-    // Inner navigator's top is UserProfileRoute (the deepest Navigator's
-    // last page); outer's top is MainRoute.
-    expect(stack, ['UserProfileRoute', 'MainRoute']);
+    // Full back-stack: inner navigator's pages reversed (deepest first),
+    // then outer navigator's. AccountRoute is in the stack underneath
+    // UserProfileRoute even though only UserProfileRoute is the active leaf.
+    expect(stack, ['UserProfileRoute', 'AccountRoute', 'MainRoute']);
+  });
+
+  testWidgets(
+      'introspector returns the full back-stack within a single AutoRoute-style navigator',
+      (tester) async {
+    // AutoRoute keeps the navigation history as a `pages` list on one
+    // Navigator. Pushing 3 screens deep means `pages = [A, B, C]`.
+    // The introspector must return all three, not just C.
+    await tester.pumpWidget(MaterialApp(
+      home: Navigator(
+        pages: const [
+          MaterialPage(name: 'DomainsRoute', child: SizedBox()),
+          MaterialPage(name: 'DomainDetailsRoute', child: SizedBox()),
+          MaterialPage(name: 'DomainRecordsRoute', child: SizedBox()),
+        ],
+        onDidRemovePage: (_) {},
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(NavigatorIntrospector.collectRouteStack(),
+        ['DomainRecordsRoute', 'DomainDetailsRoute', 'DomainsRoute']);
   });
 
   testWidgets(
