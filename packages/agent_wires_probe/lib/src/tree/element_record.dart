@@ -77,6 +77,7 @@ class SnapshotRecord {
     required this.viewport,
     required this.elements,
     this.unresolved = const <ElementRecord>[],
+    this.debug = const <String, dynamic>{},
   });
   final String? route;
 
@@ -90,11 +91,18 @@ class SnapshotRecord {
   final List<ElementRecord> elements;
   final List<ElementRecord> unresolved;
 
+  /// Diagnostic info from the snapshot pass — currently the route-scoping
+  /// (occlusion) stats. Lets the agent verify which features of the probe
+  /// actually ran on this call. Emitted under `_debug` to make the
+  /// "non-content" intent obvious in the JSON.
+  final Map<String, dynamic> debug;
+
   Map<String, dynamic> toJson() => {
         if (route != null) 'route': route,
         if (routeStack.isNotEmpty) 'route_stack': routeStack,
         'viewport': {'w': viewport.width, 'h': viewport.height},
         'elements': elements.map((e) => e.toJson()).toList(),
         'unresolved': unresolved.map((e) => e.toJson()).toList(),
+        if (debug.isNotEmpty) '_debug': debug,
       };
 }

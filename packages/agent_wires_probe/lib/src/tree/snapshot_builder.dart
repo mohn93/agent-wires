@@ -26,6 +26,13 @@ class SnapshotBuilder {
   static final Set<Element> _occludedElements = <Element>{};
   static Set<Element> get occludedElements => _occludedElements;
 
+  /// Diagnostic counts from the most recent [keptNodes] run. The agent
+  /// reads this via SnapshotRecord._debug to verify the route-scoping
+  /// pass actually ran (and which navigators contributed). Updated in
+  /// place each call.
+  static OcclusionStats _lastOcclusionStats = OcclusionStats.empty();
+  static OcclusionStats get lastOcclusionStats => _lastOcclusionStats;
+
   /// Walks the live tree, applies the snapshot's classify+dedup rules, and
   /// returns the kept nodes in the same DFS-derived order the snapshot uses
   /// to assign `e_<idx>` ids. ElementResolver shares this so resolving
@@ -194,6 +201,7 @@ class SnapshotBuilder {
       viewport: media.size,
       elements: elements,
       unresolved: unresolved,
+      debug: {'occlusion': _lastOcclusionStats.toJson()},
     );
   }
 
@@ -247,11 +255,23 @@ class SnapshotBuilder {
   static List<bool> _computeOccluded(
       List<RawNode> raw, List<int> subtreeEnd) {
     final occluded = List<bool>.filled(raw.length, false);
+    var theatersFound = 0;
+    var entriesProcessed = 0;
+    var entriesDropped = 0;
     final viewport = _viewportRect();
-    if (viewport == null) return occluded;
+    if (viewport == null) {
+      _lastOcclusionStats = OcclusionStats(
+        theatersFound: 0,
+        entriesProcessed: 0,
+        entriesDropped: 0,
+        viewportFound: false,
+      );
+      return occluded;
+    }
 
     for (var i = 0; i < raw.length; i++) {
       if (raw[i].widgetType != '_Theater') continue;
+      theatersFound++;
       final theaterDepth = raw[i].depth;
       // Collect direct _OverlayEntryWidget children. visitChildren order
       // matches insertion order on Overlay (bottom-first; last is topmost).
@@ -262,6 +282,7 @@ class SnapshotBuilder {
           entries.add(j);
         }
       }
+      entriesProcessed += entries.length;
       if (entries.length < 2) continue;
 
       int? topCoveringIdx;
@@ -276,6 +297,7 @@ class SnapshotBuilder {
       // Mark every entry before the topmost covering one — they are buried
       // under an opaque page and the user can't see them.
       for (var k = 0; k < topCoveringIdx; k++) {
+        entriesDropped++;
         final start = entries[k];
         final end = subtreeEnd[start];
         for (var m = start; m <= end; m++) {
@@ -283,6 +305,12 @@ class SnapshotBuilder {
         }
       }
     }
+    _lastOcclusionStats = OcclusionStats(
+      theatersFound: theatersFound,
+      entriesProcessed: entriesProcessed,
+      entriesDropped: entriesDropped,
+      viewportFound: true,
+    );
     return occluded;
   }
 
@@ -364,5 +392,51 @@ class _Kept {
   final int subtreeEnd;
   final Rect bounds;
   final String widgetType;
+}
+
+/// Counts from one occlusion pass — surfaced into the snapshot as a `_debug`
+/// field so the agent can verify the route-scoping ran, and (when it
+/// didn't drop anything) tell us *why* (no overlay entries seen, no
+/// covering page detected, etc.).
+class OcclusionStats {
+  const OcclusionStats({
+    required this.theatersFound,
+    required this.entriesProcessed,
+    required this.entriesDropped,
+    required this.viewportFound,
+  });
+
+  factory OcclusionStats.empty() => const OcclusionStats(
+        theatersFound: 0,
+        entriesProcessed: 0,
+        entriesDropped: 0,
+        viewportFound: false,
+      );
+
+  /// Number of `_Theater` nodes seen — one per Navigator's Overlay.
+  /// Zero means we never found an overlay; the route-scoping pass had
+  /// nothing to do.
+  final int theatersFound;
+
+  /// Total `_OverlayEntryWidget` children counted across all theaters.
+  /// In a single-page app this is 1; with a pushed route it's at least 2.
+  final int entriesProcessed;
+
+  /// Entries marked occluded (their subtree dropped from snapshot).
+  /// Zero with theaters > 1 and entries > 2 means no entry passed the
+  /// "covers the viewport" check — probe build is wrong or the pages
+  /// aren't laid out viewport-sized for some reason.
+  final int entriesDropped;
+
+  /// False when the viewport couldn't be determined (rare; means the
+  /// MediaQuery / View metrics weren't available at snapshot time).
+  final bool viewportFound;
+
+  Map<String, dynamic> toJson() => {
+        'theaters_found': theatersFound,
+        'entries_processed': entriesProcessed,
+        'entries_dropped': entriesDropped,
+        'viewport_found': viewportFound,
+      };
 }
 
