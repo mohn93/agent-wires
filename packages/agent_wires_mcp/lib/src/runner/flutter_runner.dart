@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 /// Drives `flutter run --machine` as a subprocess, parses its newline-delimited
-/// JSON event stream for the VM service URI, and exposes that URI for an MCP
-/// server to attach to.
+/// JSON event stream for the VM service URI, captures the appId, and exposes
+/// hot-reload / hot-restart commands over the same stdin pipe.
 ///
 /// Also handles `flutter test --machine` (used by integration tests) — both
 /// formats are recognised by [_extractVmServiceUri].
@@ -23,6 +23,9 @@ class FlutterRunner {
 
   Process? _process;
   Uri? _vmServiceUri;
+  String? _appId;
+  int _nextRequestId = 1;
+  final Map<int, Completer<Map<String, dynamic>>> _pendingResponses = {};
 
   /// The VM service URI reported by `flutter`. Populated after [start] completes.
   Uri get vmServiceUri => _vmServiceUri ??
@@ -31,6 +34,10 @@ class FlutterRunner {
   /// Non-throwing variant of [vmServiceUri] for callers that legitimately want
   /// to peek before [start] has resolved (e.g. status tools).
   Uri? get vmServiceUriOrNull => _vmServiceUri;
+
+  /// The Flutter app id reported by the `app.started` event. Required for
+  /// `app.restart` (hot reload / hot restart) calls.
+  String? get appId => _appId;
 
   /// Spawns `flutter run` / `flutter test` and blocks until the VM service URI
   /// is reported (or [timeout] elapses).
@@ -51,26 +58,118 @@ class FlutterRunner {
     );
     _process = proc;
 
-    final completer = Completer<Uri>();
+    final vmReady = Completer<Uri>();
     proc.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
-        .listen((line) {
-      final uri = _extractVmServiceUri(line);
-      if (uri != null && !completer.isCompleted) {
-        completer.complete(uri);
-      }
-    });
+        .listen((line) => _onStdoutLine(line, vmReady));
     // Surface flutter's stderr so the caller can debug build failures.
-    proc.stderr
-        .transform(utf8.decoder)
-        .listen(stderr.write);
+    proc.stderr.transform(utf8.decoder).listen(stderr.write);
 
     try {
-      _vmServiceUri = await completer.future.timeout(timeout);
+      _vmServiceUri = await vmReady.future.timeout(timeout);
     } on TimeoutException {
       await stop();
       rethrow;
+    }
+  }
+
+  /// Triggers a hot reload (state-preserving source reinjection). Requires
+  /// [mode] = `FlutterRunMode.run` and a captured [appId]. Returns the parsed
+  /// response from `flutter run --machine`: `{code: int, message?: String}`.
+  /// `code: 0` means success; non-zero means the reload was rejected (compile
+  /// error, hot-reload-incompatible change, etc.).
+  Future<Map<String, dynamic>> hotReload({
+    Duration timeout = const Duration(seconds: 30),
+  }) =>
+      _restart(fullRestart: false, timeout: timeout);
+
+  /// Triggers a hot restart (tears down the isolate and re-runs `main()`).
+  /// State is lost. Slower than hot reload but always works as long as the
+  /// app compiles. Same response shape as [hotReload].
+  Future<Map<String, dynamic>> hotRestart({
+    Duration timeout = const Duration(seconds: 60),
+  }) =>
+      _restart(fullRestart: true, timeout: timeout);
+
+  Future<Map<String, dynamic>> _restart({
+    required bool fullRestart,
+    required Duration timeout,
+  }) async {
+    final proc = _process;
+    if (proc == null) {
+      throw StateError('FlutterRunner.start() has not been called');
+    }
+    final id = _appId;
+    if (id == null) {
+      throw StateError(
+        'no appId captured — flutter never emitted `app.started`',
+      );
+    }
+    final reqId = _nextRequestId++;
+    final completer = Completer<Map<String, dynamic>>();
+    _pendingResponses[reqId] = completer;
+    final cmd = jsonEncode([
+      {
+        'id': reqId,
+        'method': 'app.restart',
+        'params': {
+          'appId': id,
+          'fullRestart': fullRestart,
+          'pause': false,
+        },
+      }
+    ]);
+    proc.stdin.writeln(cmd);
+    await proc.stdin.flush();
+    try {
+      return await completer.future.timeout(timeout);
+    } on TimeoutException {
+      _pendingResponses.remove(reqId);
+      rethrow;
+    }
+  }
+
+  void _onStdoutLine(String line, Completer<Uri> vmReady) {
+    final parsed = _safeDecode(line);
+    if (parsed == null) return;
+    final messages = parsed is List ? parsed : [parsed];
+    for (final m in messages) {
+      if (m is! Map) continue;
+      _dispatch(m.cast<String, dynamic>(), vmReady);
+    }
+  }
+
+  void _dispatch(Map<String, dynamic> msg, Completer<Uri> vmReady) {
+    final params = msg['params'];
+    if (params is Map) {
+      final p = params.cast<String, dynamic>();
+      final event = msg['event'];
+      // app.started carries the appId we need for subsequent restart calls.
+      if (event == 'app.started') {
+        final appId = p['appId'];
+        if (appId is String) _appId = appId;
+      }
+      // VM service URI can appear on debugPort, started, or test.startedProcess.
+      final uri = _extractVmServiceUriFromParams(p);
+      if (uri != null && !vmReady.isCompleted) vmReady.complete(uri);
+    }
+
+    final id = msg['id'];
+    if (id is int) {
+      final pending = _pendingResponses.remove(id);
+      if (pending != null && !pending.isCompleted) {
+        final result = msg['result'];
+        if (result is Map) {
+          pending.complete(result.cast<String, dynamic>());
+        } else if (result != null) {
+          pending.complete({'result': result});
+        } else if (msg['error'] != null) {
+          pending.completeError(StateError('flutter error: ${msg['error']}'));
+        } else {
+          pending.complete(const {});
+        }
+      }
     }
   }
 
@@ -80,31 +179,30 @@ class FlutterRunner {
     proc.kill();
     await proc.exitCode;
     _process = null;
+    _appId = null;
+    for (final c in _pendingResponses.values) {
+      if (!c.isCompleted) c.completeError(StateError('FlutterRunner stopped'));
+    }
+    _pendingResponses.clear();
   }
 }
 
 enum FlutterRunMode { run, test }
 
-/// `flutter run --machine` emits one JSON event per line, wrapped in `[...]`,
-/// each carrying a `params` object. Recognised shapes:
-///   `{"event":"app.debugPort","params":{"wsUri":"ws://..."}}`
-///   `{"event":"test.startedProcess","params":{"vmServiceUri":"..."}}`
-///   `{"event":"app.started","params":{...}}` (no URI here — ignored)
-///   legacy `{"params":{"observatoryUri":"..."}}`
-Uri? _extractVmServiceUri(String line) {
-  dynamic parsed;
+dynamic _safeDecode(String line) {
   try {
-    parsed = jsonDecode(line);
+    return jsonDecode(line);
   } catch (_) {
     return null;
   }
-  if (parsed is List && parsed.isNotEmpty) parsed = parsed.first;
-  if (parsed is! Map) return null;
-  final params = parsed['params'];
-  if (params is! Map) return null;
-  final candidate = params['wsUri'] ??
-      params['vmServiceUri'] ??
-      params['observatoryUri'];
+}
+
+/// Recognises the VM service URI in the various shapes `flutter run --machine`
+/// and `flutter test --machine` emit it.
+Uri? _extractVmServiceUriFromParams(Map<String, dynamic> params) {
+  final candidate =
+      params['wsUri'] ?? params['vmServiceUri'] ?? params['observatoryUri'];
   if (candidate is String) return Uri.parse(candidate);
   return null;
 }
+

@@ -76,6 +76,18 @@ class VmClient {
     return Map<String, dynamic>.from(json);
   }
 
+  /// Asks the VM to reload changed sources into the QA isolate (the Dart
+  /// equivalent of Flutter's hot reload). Returns `{success: bool}`.
+  ///
+  /// Note: Flutter normally couples a reload with a `reassemble` that
+  /// rebuilds the widget tree. This call only does the source swap — for
+  /// the full Flutter hot reload semantics, use [FlutterRunner.hotReload]
+  /// instead (only available in lazy/run mode).
+  Future<Map<String, dynamic>> reloadSources() async {
+    final report = await _service.reloadSources(_isolateId);
+    return {'success': report.success ?? false};
+  }
+
   Future<void> dispose() async {
     await _service.dispose();
   }

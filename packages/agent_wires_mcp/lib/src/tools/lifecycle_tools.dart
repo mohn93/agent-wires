@@ -56,6 +56,58 @@ List<Tool> lifecycleTools(AppSession session) => [
           return _toolResult(jsonEncode(_statusPayload(session)));
         },
       ),
+      Tool(
+        name: 'hot_reload',
+        description:
+            'Re-injects edited Dart sources into the running app and '
+            'reassembles the widget tree. App state and current route are '
+            'preserved. Takes ~1–3s.\n\n'
+            'USE WHEN: the user has just edited source code and you want to '
+            'verify the change without losing the current screen / login.\n'
+            'DO NOT USE: as a generic "the app seems stuck" recovery — that '
+            'is what wait_for_idle, snapshot, or stop_app + boot_app are '
+            'for. Reflexive reloads waste time on no-op rebuilds.\n\n'
+            'After this returns, your existing `element_id`s are STALE — '
+            'call `snapshot` again before any further action. If the '
+            'response has `success: false`, read `message`/`notices`: the '
+            'reload was rejected (usually a compile error or a '
+            'hot-reload-incompatible change like a new field on an enum). '
+            'Tell the user what failed; do not retry blindly.',
+        inputSchema: {'type': 'object', 'properties': {}},
+        handler: (_) async {
+          try {
+            final result = await session.hotReload();
+            return _toolResult(jsonEncode(result));
+          } catch (e) {
+            return _toolError('hot_reload failed: $e');
+          }
+        },
+      ),
+      Tool(
+        name: 'hot_restart',
+        description:
+            'Tears down the Dart isolate and re-runs `main()`. App state is '
+            'LOST — back to splash/login screen. Takes ~3–8s. Slower than '
+            'hot_reload but always works as long as the app compiles.\n\n'
+            'USE WHEN: hot_reload was rejected (e.g. main() changed, '
+            'top-level state needs to re-init), or the app is in an '
+            'unrecoverable in-memory state. \n'
+            'DO NOT USE: when hot_reload would suffice — the user will '
+            'have to log in again. Also unsupported in attached mode '
+            '(`serve --attach`): the caller owns the flutter process there.\n\n'
+            'After this returns, your `element_id`s, route_stack, and any '
+            'login session are all stale. Call `snapshot` and probably '
+            'have to drive the login flow again.',
+        inputSchema: {'type': 'object', 'properties': {}},
+        handler: (_) async {
+          try {
+            final result = await session.hotRestart();
+            return _toolResult(jsonEncode(result));
+          } catch (e) {
+            return _toolError('hot_restart failed: $e');
+          }
+        },
+      ),
     ];
 
 Map<String, dynamic> _statusPayload(AppSession session) => {

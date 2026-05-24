@@ -103,6 +103,66 @@ class AppSession {
     }
   }
 
+  /// Triggers a hot reload — re-injects changed sources, preserves app state
+  /// and current route. Returns the result from the underlying mechanism:
+  /// `{success: bool, code?: int, message?: String}` (the exact shape
+  /// depends on lazy vs attached mode).
+  ///
+  /// Lazy mode delegates to [FlutterRunner.hotReload] which speaks
+  /// `flutter run --machine` and performs a full Flutter hot reload
+  /// (sources + reassemble). Attached mode falls back to VM service
+  /// `reloadSources` — sources swap but no Flutter widget-tree reassemble,
+  /// so visible changes may not appear until the next rebuild.
+  Future<Map<String, dynamic>> hotReload() async {
+    if (_state != AppState.ready) {
+      throw StateError('AppSession is not ready (state=${_state.name})');
+    }
+    final runner = _runner;
+    if (runner != null) {
+      final res = await runner.hotReload();
+      return {
+        'success': res['code'] == 0,
+        'mode': 'flutter_machine',
+        ...res,
+      };
+    }
+    final vm = _vm;
+    if (vm == null) {
+      throw StateError('no VmClient attached');
+    }
+    final res = await vm.reloadSources();
+    return {
+      'mode': 'vm_service',
+      'note': 'attached mode reloads sources only; widget tree may not '
+          'rebuild until the next frame',
+      ...res,
+    };
+  }
+
+  /// Triggers a hot restart — tears down the isolate and re-runs `main()`.
+  /// **State is lost**, including any login session and current route.
+  /// Only supported in lazy mode (where we own the flutter process). In
+  /// attached mode, throws — the caller owns the flutter subprocess and
+  /// must restart it externally.
+  Future<Map<String, dynamic>> hotRestart() async {
+    if (_state != AppState.ready) {
+      throw StateError('AppSession is not ready (state=${_state.name})');
+    }
+    final runner = _runner;
+    if (runner == null) {
+      throw StateError(
+        'hot_restart requires lazy mode — attached sessions cannot restart '
+        'the flutter process they did not start',
+      );
+    }
+    final res = await runner.hotRestart();
+    return {
+      'success': res['code'] == 0,
+      'mode': 'flutter_machine',
+      ...res,
+    };
+  }
+
   Future<void> dispose() async {
     try {
       await _vm?.dispose();
