@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import '../runner/flutter_runner.dart';
 import '../vm/client.dart';
@@ -52,6 +53,11 @@ class AppSession {
   Uri? get vmServiceUri =>
       _state == AppState.ready ? _runner?.vmServiceUriOrNull : null;
 
+  /// The latest progress message from `flutter run --machine` (Xcode build
+  /// step, Pod install line, dart compile progress). Useful for diagnosing
+  /// a slow or stuck boot.
+  String? get latestProgress => _runner?.latestProgress;
+
   /// Returns the connected [VmClient]. If the session is lazy and hasn't been
   /// booted yet (or a previous boot timed out / was stopped), this kicks off
   /// `flutter run --machine`, waits for the VM service URI, and attaches.
@@ -99,6 +105,10 @@ class AppSession {
         workingDirectory: _workingDirectory!,
         deviceId: _deviceId,
         flutterArgs: _flutterArgs,
+        // Stream flutter's progress messages to MCP server stderr so the
+        // human (and Claude Code's MCP log viewer) can see what's happening
+        // during a multi-minute cold compile.
+        onProgress: (msg) => stderr.writeln('agent_wires_mcp: $msg'),
       );
       _runner = runner;
       // Large Flutter apps (firebase, syncfusion, flutter_quill, etc.) can

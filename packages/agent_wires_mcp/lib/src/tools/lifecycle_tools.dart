@@ -41,8 +41,14 @@ List<Tool> lifecycleTools(AppSession session) => [
         name: 'app_status',
         description:
             'Returns the current lifecycle state of the app under test '
-            '(idle | booting | ready | exited), plus the VM service URI and '
-            'last error if any. Cheap; safe to poll. Never starts the app.',
+            '(idle | booting | ready | exited), the VM service URI, last '
+            'error if any, and `latest_progress` — the most recent message '
+            'from `flutter run --machine` (e.g. "Running Xcode build...", '
+            '"Installing Pods...", "Launching lib/main.dart on iPhone 15..."). '
+            'When boot_app appears stuck, call app_status to see what step '
+            'it is on; a stale latest_progress for several minutes means '
+            'the underlying flutter process is hung. Cheap; safe to poll. '
+            'Never starts the app.',
         inputSchema: {'type': 'object', 'properties': {}},
         handler: (_) async => _toolResult(jsonEncode(_statusPayload(session))),
       ),
@@ -119,6 +125,8 @@ Map<String, dynamic> _statusPayload(AppSession session) => {
         'vm_service_uri': session.vmServiceUri.toString(),
       if (session.deviceId != null) 'device_id': session.deviceId,
       if (session.lastError != null) 'last_error': session.lastError,
+      if (session.latestProgress != null)
+        'latest_progress': session.latestProgress,
     };
 
 Map<String, dynamic> _toolResult(String text) => {
