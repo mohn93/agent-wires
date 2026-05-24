@@ -53,14 +53,29 @@ class AppSession {
       _state == AppState.ready ? _runner?.vmServiceUriOrNull : null;
 
   /// Returns the connected [VmClient]. If the session is lazy and hasn't been
-  /// booted yet, this kicks off `flutter run --machine`, waits for the VM
-  /// service URI, and attaches. Concurrent callers share one boot future.
+  /// booted yet (or a previous boot timed out / was stopped), this kicks off
+  /// `flutter run --machine`, waits for the VM service URI, and attaches.
+  /// Concurrent callers share one boot future.
+  ///
+  /// Lazy sessions can recover from [AppState.exited] — we own the flutter
+  /// command + project config and can simply re-boot. Attached sessions
+  /// stay terminal because we have no way to reconnect to a process we
+  /// don't own; the caller must construct a new AppSession.
   Future<VmClient> ensureReady() async {
     if (_state == AppState.ready && _vm != null) return _vm!;
     if (_state == AppState.exited) {
-      throw StateError(
-        'AppSession is exited${_lastError == null ? '' : ': $_lastError'}',
-      );
+      if (_attached) {
+        throw StateError(
+          'attached AppSession is exited and cannot be revived. The flutter '
+          'process must be restarted externally and a new AppSession '
+          'constructed with the new VM service URI.',
+        );
+      }
+      // Lazy mode: reset to idle and let the boot path below run again.
+      _state = AppState.idle;
+      _lastError = null;
+      _runner = null;
+      _vm = null;
     }
     if (_attached) {
       throw StateError('attached AppSession has no VmClient');
@@ -86,7 +101,11 @@ class AppSession {
         flutterArgs: _flutterArgs,
       );
       _runner = runner;
-      await runner.start();
+      // Large Flutter apps (firebase, syncfusion, flutter_quill, etc.) can
+      // take well past 5 min on a cold compile. Be generous — the user
+      // sees the wait in their progress UI anyway, and timing out
+      // prematurely just bricks the session.
+      await runner.start(timeout: const Duration(minutes: 10));
       final vm = await VmClient.connect(runner.vmServiceUri);
       _vm = vm;
       _state = AppState.ready;

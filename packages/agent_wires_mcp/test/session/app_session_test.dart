@@ -44,6 +44,34 @@ void main() {
       expect(session.state, AppState.exited);
       expect(session.lastError, isNotNull);
     });
+
+    test('exited is not terminal — ensureReady retries the boot', () async {
+      // Agent feedback: once a boot timed out, every subsequent boot_app
+      // instantly failed with "AppSession is exited". For lazy sessions we
+      // own the project config and can simply re-boot; exited should reset
+      // to idle on the next ensureReady call.
+      final session = AppSession.lazy(
+        workingDirectory: '/this/does/not/exist/at/all',
+      );
+      await expectLater(session.ensureReady(), throwsA(isA<Object>()));
+      expect(session.state, AppState.exited);
+
+      // Second attempt: also fails (still bogus dir), but the failure mode
+      // must be a fresh boot attempt — not an instant "exited" reject.
+      // lastError should still be populated after the new attempt.
+      await expectLater(session.ensureReady(), throwsA(isA<Object>()));
+      expect(session.state, AppState.exited);
+      expect(session.lastError, isNotNull);
+    });
+  });
+
+  group('AppSession exited recovery', () {
+    test('attached session stays terminal once exited', () async {
+      final session = AppSession.attached(_FakeVm());
+      await session.dispose();
+      expect(() => session.ensureReady(),
+          throwsA(predicate((e) => e.toString().contains('attached'))));
+    });
   });
 }
 
