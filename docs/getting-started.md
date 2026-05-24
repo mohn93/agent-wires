@@ -74,9 +74,12 @@ If `agent_wires_mcp` isn't found, follow the
 
 ## Step 3 — Configure your MCP client
 
-The `run` subcommand does everything in one process: boots
-`flutter run --machine`, captures the VM service URI, attaches to the QA
-isolate, and serves MCP over stdio.
+The `run` subcommand serves MCP over stdio immediately; flutter only
+boots when the agent calls `boot_app` (or any other tool, via auto-boot).
+You **don't** need to pin a device in the registration — `list_devices`
++ `boot_app(device_id: ...)` lets the agent (or you) pick at session
+time, which avoids the classic "phone + sim both connected, flutter
+silently picks the phone and stalls 10 min on signing" trap.
 
 ### Claude Code
 
@@ -90,56 +93,33 @@ Add to `~/.claude.json` (create the file if it doesn't exist):
       "args": [
         "run",
         "--project",
-        "/Users/you/your-flutter-app",
-        "-d",
-        "<your device id from `flutter devices`>"
+        "/Users/you/your-flutter-app"
       ]
     }
   }
 }
 ```
 
-Restart Claude Code. The agent now has access to all 18 tools.
+Add `--flavor <name>` and `-t lib/main_<flavor>.dart` if your app uses
+flavors. Restart Claude Code; the agent now has access to all 23 tools.
 
 ### Claude Desktop
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
-or the equivalent path for your OS:
-
-```json
-{
-  "mcpServers": {
-    "flutter-qa": {
-      "command": "agent_wires_mcp",
-      "args": [
-        "run",
-        "--project",
-        "/Users/you/your-flutter-app",
-        "-d",
-        "<your device id>"
-      ]
-    }
-  }
-}
-```
-
-Quit and reopen Claude Desktop.
+or the equivalent path for your OS — same `args` shape as above. Quit
+and reopen Claude Desktop.
 
 ### Cursor / others
 
-Same shape: spawn `agent_wires_mcp run --project <app dir> -d <device>` over
-stdio. Consult your client's MCP documentation for the config file
-location.
+Same shape: spawn `agent_wires_mcp run --project <app dir>` over stdio.
+Consult your client's MCP documentation for the config file location.
 
-> **Finding a device id**
+> **Picking a device at session time**
 >
-> ```bash
-> flutter devices
-> ```
->
-> Copy the second column (the long UUID for simulators or `00008120-…` for
-> physical iOS devices). You can omit `-d` to let Flutter pick the first
-> device, but explicit is more predictable.
+> The agent's first call is normally `list_devices`, which runs
+> `flutter devices --machine` and returns the live list. The agent (or
+> you) picks one and passes its id to `boot_app(device_id: "...")`.
+> The choice sticks until the next `stop_app`.
 
 ## Step 4 — Try it (≈1 minute)
 
@@ -192,15 +172,23 @@ project; commit that file to share the vocabulary with your team.
 - **"no isolate has ext.qa.* extensions registered"** — `AgentWiresProbe.install()`
   didn't run. Confirm it's the first line of `main()`, and confirm you're in
   debug or profile mode (not release).
-- **First snapshot times out** — iOS first build is slow. Bump the wait by
-  asking the agent to call `wait_for_idle(timeout_ms: 30000)` first.
+- **`boot_app` appears stuck** — call `app_status` to see
+  `latest_progress` ("Running Xcode build...", "Installing Pods...",
+  "Launching..."). A stale message for >2 min means flutter itself is
+  hung — common causes: a connected physical iPhone needing manual
+  trust, Pods install racing, codesigning. Disconnect the phone or
+  pick a simulator via `boot_app(device_id: ...)`.
 - **`flutter` not on PATH** — `agent_wires_mcp run` shells out to `flutter`.
   Make sure the MCP client's spawned env can find it (often means setting
   `PATH` in your shell's login profile, not just `.bashrc`).
 - **VM service connects but tools return empty** — usually means the app
   hasn't pumped its first frame yet. `wait_for_idle` once, then snapshot.
-- **Multiple devices** — always pass `-d <device id>`. Flutter's default
-  picker can grab a desktop device, which the probe doesn't support yet.
+- **Multiple devices connected** — use `list_devices` and pass the
+  result to `boot_app(device_id: ...)`. Flutter's default picker can
+  grab a physical iPhone over a sim and stall on signing.
+- **Animation-heavy screen never settles** — `wait_for_idle` returns
+  `{idle: false, blocked_by: ["scheduled_frame", ...]}`. Pass
+  `ignore_animations: true` to wait only for HTTP.
 
 ## What's next
 

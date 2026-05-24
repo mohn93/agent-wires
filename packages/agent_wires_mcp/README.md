@@ -76,19 +76,22 @@ agent_wires_mcp review  open the human-curation dashboard
 | `-t, --target <path>` | entry-point Dart file |
 | `--dart-define KEY=VALUE` | repeatable, forwarded to `flutter run` |
 
-## Tool surface (18 tools)
+## Tool surface (23 tools)
 
 | Category | Tools |
 |---|---|
+| Lifecycle | `list_devices`, `boot_app`, `app_status`, `stop_app`, `hot_reload`, `hot_restart` |
 | Perception | `snapshot`, `inspect`, `screenshot` (optional Set-of-Mark overlay) |
 | Action | `tap`, `long_press`, `swipe`, `enter_text`, `clear_text`, `scroll`, `press_back` |
-| Sync | `wait_for_idle`, `wait_for_route`, `wait_for_element` |
+| Sync | `wait_for_idle` (+ `ignore_animations` flag), `wait_for_route`, `wait_for_element` |
 | Observability | `get_logs`, `get_network` |
 | Memory | `label_element`, `get_labels`, `recall` |
 
 A typical agent loop:
 
 ```
+list_devices                → discover what flutter can target
+boot_app(device_id="...")   → compile + launch on the chosen device
 snapshot                    → see what's on the screen
 tap("Sign in")              → drive the UI
 wait_for_route("HomeRoute") → block until the navigation completes
@@ -96,6 +99,28 @@ get_network since=<cursor>  → see what HTTP that triggered
 get_logs    since=<cursor>  → see what the app printed
 snapshot                    → confirm the new state
 ```
+
+When the user edits source code:
+
+```
+hot_reload                  → re-inject sources, preserve state + route
+snapshot                    → confirm the change landed
+```
+
+### Why this server uses a "stateful lifecycle" instead of pinning at registration
+
+The MCP registration command does not need `-d` for a device. Instead, the
+agent calls `list_devices` and asks the user which to target — pinning a
+specific simulator (or worse, accidentally a physical phone with stalled
+codesigning) at registration time turns first-launch into a 10-minute
+black box. `boot_app` accepts the chosen device id; selection sticks
+until `stop_app`.
+
+For long boots, pass `wait: false` to `boot_app` — it returns
+`{state: "booting"}` immediately and the agent polls `app_status` to
+watch `latest_progress` ("Running Xcode build...", "Installing Pods...")
+and decide whether to keep waiting or `stop_app`. Subsequent perception
+and action tools auto-wait for the boot to finish.
 
 ## Human-in-the-loop dashboard
 

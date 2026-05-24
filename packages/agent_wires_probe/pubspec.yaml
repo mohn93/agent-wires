@@ -1,6 +1,6 @@
 name: agent_wires_probe
 description: Runtime probe that exposes a Flutter app's widget tree to QA agents over the Dart VM service. Pairs with agent_wires_mcp.
-version: 0.1.1
+version: 0.1.3
 
 homepage: https://github.com/mohn93/agent-wires/tree/main/packages/agent_wires_probe
 repository: https://github.com/mohn93/agent-wires

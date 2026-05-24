@@ -70,14 +70,14 @@ you're building a different client. Full request/response shapes are in
 | Service extension | Purpose |
 |---|---|
 | `ext.qa.ping` | health check, returns probe version |
-| `ext.qa.snapshot` | denoised semantic tree (16 elements vs. raw 800+) |
-| `ext.qa.inspect` | full widget chain for one `element_id` |
-| `ext.qa.screenshot` | base64 PNG of the current frame |
+| `ext.qa.snapshot` | denoised semantic tree (16 elements vs. raw 800+); per-element `state` for Switch/Checkbox/Radio/Slider; drops widgets buried under pushed routes |
+| `ext.qa.inspect` | widget chain, properties, descendant subtree; `painter` + `size` for `CustomPaint` descendants |
+| `ext.qa.screenshot` | base64 PNG of the current frame (auto-waits one frame if nothing has rasterized yet) |
 | `ext.qa.tap` / `long_press` / `swipe` | gesture synthesis through Flutter's `GestureBinding` |
 | `ext.qa.enter_text` / `clear_text` | drives the focused `EditableTextState` directly |
 | `ext.qa.scroll` | jumps the nearest `ScrollPosition` |
 | `ext.qa.press_back` | pops the current route |
-| `ext.qa.wait_for_idle` | true when scheduler + timers + HTTP all settle |
+| `ext.qa.wait_for_idle` | true when scheduler + timers + HTTP all settle; `ignore_animations` skips the frame check; returns `blocked_by` on timeout |
 | `ext.qa.wait_for_route` | resolves when a named route becomes current |
 | `ext.qa.wait_for_element` | resolves when a label/role match appears |
 | `ext.qa.get_logs` | drains a 500-entry ring buffer of `debugPrint` / `FlutterError` / uncaught zone errors |

@@ -116,7 +116,7 @@ snapshot                       → confirm the new state
 ```
 
 The whole tool surface, with input schemas, is documented in the
-[`agent_wires_mcp` README](packages/agent_wires_mcp#tool-surface-18-tools).
+[`agent_wires_mcp` README](packages/agent_wires_mcp#tool-surface-23-tools).
 
 ## How it works
 
@@ -128,7 +128,8 @@ The whole tool surface, with input schemas, is documented in the
                          ▼
 ┌─────────────────────────────────────────────────────┐
 │  agent_wires_mcp  (Dart CLI, separate process)       │
-│    18 tools                                         │
+│    23 tools (lifecycle + perception + action +      │
+│              sync + observability + memory)         │
 │    AST source-location proposals                    │
 │    per-project semantic map (.flutter_qa/map.json)  │
 │    human-curation dashboard (localhost:7345)        │

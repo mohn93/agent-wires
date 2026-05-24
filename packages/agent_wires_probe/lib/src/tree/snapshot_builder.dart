@@ -258,6 +258,7 @@ class SnapshotBuilder {
     var theatersFound = 0;
     var entriesProcessed = 0;
     var entriesDropped = 0;
+    final theaterDetails = <Map<String, dynamic>>[];
     final viewport = _viewportRect();
     if (viewport == null) {
       _lastOcclusionStats = OcclusionStats(
@@ -285,13 +286,39 @@ class SnapshotBuilder {
       entriesProcessed += entries.length;
       if (entries.length < 2) continue;
 
+      // "Covering" is judged against THIS theater's own box, not the global
+      // window. device_preview (and any nested Navigator) lays its pages out
+      // smaller than physicalSize — measuring against the full window made an
+      // 870px page read as 91% of a 956px viewport and never "cover".
+      final theaterRect = raw[i].bounds ?? viewport;
+
+      // Per-entry cover check + a description, so we can see WHY an entry
+      // did or didn't register as covering (its largest node's bounds, the
+      // transition/page wrappers above it, etc.).
+      final covers = <bool>[];
+      final entryDescs = <Map<String, dynamic>>[];
+      for (var k = 0; k < entries.length; k++) {
+        final c =
+            _subtreeCoversViewport(raw, subtreeEnd, entries[k], theaterRect);
+        covers.add(c);
+        entryDescs.add(_describeEntry(raw, subtreeEnd, entries[k], c));
+      }
+
       int? topCoveringIdx;
       for (var k = entries.length - 1; k >= 0; k--) {
-        if (_subtreeCoversViewport(raw, subtreeEnd, entries[k], viewport)) {
+        if (covers[k]) {
           topCoveringIdx = k;
           break;
         }
       }
+
+      theaterDetails.add({
+        'theater_depth': theaterDepth,
+        'entry_count': entries.length,
+        'top_covering_idx': topCoveringIdx,
+        'entries': entryDescs,
+      });
+
       if (topCoveringIdx == null) continue;
 
       // Mark every entry before the topmost covering one — they are buried
@@ -310,33 +337,83 @@ class SnapshotBuilder {
       entriesProcessed: entriesProcessed,
       entriesDropped: entriesDropped,
       viewportFound: true,
+      details: theaterDetails,
     );
     return occluded;
   }
 
-  /// Returns true when any node in [root]'s subtree has bounds covering
-  /// at least 98% of [viewport]. The 2% slack handles status bars / safe
-  /// areas that an opaque page sometimes doesn't paint over.
+  /// Returns true when any node in [root]'s subtree *encloses* [target]
+  /// (within 2px slack on every edge). Containment — not area — so a page
+  /// that's been parallax-shifted out from under the top route (same area,
+  /// translated left) no longer counts as covering. [target] is the owning
+  /// theater's box, so device_preview / nested navigators are measured
+  /// against their real viewport rather than the full window.
   static bool _subtreeCoversViewport(
     List<RawNode> raw,
     List<int> subtreeEnd,
     int root,
-    Rect viewport,
+    Rect target,
   ) {
-    final viewportArea = viewport.width * viewport.height;
-    if (viewportArea <= 0) return false;
-    final threshold = viewportArea * 0.98;
+    if (target.width <= 0 || target.height <= 0) return false;
+    const eps = 2.0;
     for (var i = root; i <= subtreeEnd[root]; i++) {
       final b = raw[i].bounds;
       if (b == null) continue;
-      // Must roughly cover the full viewport AND start near origin —
-      // a viewport-sized list scrolled mid-screen isn't a covering page.
-      if (b.left > viewport.left + 2) continue;
-      if (b.top > viewport.top + 2) continue;
-      final area = b.width * b.height;
-      if (area >= threshold) return true;
+      if (b.left <= target.left + eps &&
+          b.top <= target.top + eps &&
+          b.right >= target.right - eps &&
+          b.bottom >= target.bottom - eps) {
+        return true;
+      }
     }
     return false;
+  }
+
+  /// Diagnostic description of one overlay entry: the first few descendant
+  /// widget types (to spot the page / transition wrappers — e.g.
+  /// CupertinoPageTransition, Scaffold) and the largest-area bounded node
+  /// in its subtree (the candidate the cover test keys off). Surfaced via
+  /// OcclusionStats so we can see why a pushed page isn't matching.
+  static Map<String, dynamic> _describeEntry(
+    List<RawNode> raw,
+    List<int> subtreeEnd,
+    int root,
+    bool covers,
+  ) {
+    final childTypes = <String>[];
+    for (var i = root + 1;
+        i <= subtreeEnd[root] && childTypes.length < 6;
+        i++) {
+      childTypes.add(raw[i].widgetType);
+    }
+    Rect? maxRect;
+    String? maxType;
+    var maxArea = -1.0;
+    for (var i = root; i <= subtreeEnd[root]; i++) {
+      final b = raw[i].bounds;
+      if (b == null) continue;
+      final area = b.width * b.height;
+      if (area > maxArea) {
+        maxArea = area;
+        maxRect = b;
+        maxType = raw[i].widgetType;
+      }
+    }
+    return {
+      'entry_type': raw[root].widgetType,
+      'depth': raw[root].depth,
+      'subtree_size': subtreeEnd[root] - root + 1,
+      'covers': covers,
+      'child_types': childTypes,
+      if (maxRect != null)
+        'max_node': {
+          'type': maxType,
+          'x': maxRect.left.round(),
+          'y': maxRect.top.round(),
+          'w': maxRect.width.round(),
+          'h': maxRect.height.round(),
+        },
+    };
   }
 
   static Rect? _viewportRect() {
@@ -404,6 +481,7 @@ class OcclusionStats {
     required this.entriesProcessed,
     required this.entriesDropped,
     required this.viewportFound,
+    this.details = const [],
   });
 
   factory OcclusionStats.empty() => const OcclusionStats(
@@ -432,11 +510,18 @@ class OcclusionStats {
   /// MediaQuery / View metrics weren't available at snapshot time).
   final bool viewportFound;
 
+  /// Per-theater breakdown — only theaters with >= 2 overlay entries (where
+  /// a drop decision is actually made). Each item: {theater_depth,
+  /// entry_count, top_covering_idx, entries:[{entry_type, depth,
+  /// subtree_size, covers, child_types, max_node}]}. Diagnostic only.
+  final List<Map<String, dynamic>> details;
+
   Map<String, dynamic> toJson() => {
         'theaters_found': theatersFound,
         'entries_processed': entriesProcessed,
         'entries_dropped': entriesDropped,
         'viewport_found': viewportFound,
+        if (details.isNotEmpty) 'theaters': details,
       };
 }
 
