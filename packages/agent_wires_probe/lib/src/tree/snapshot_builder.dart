@@ -19,6 +19,13 @@ class SnapshotBuilder {
     'InkWell',
   };
 
+  /// Identity-set of Elements that live beneath an opaque pushed route.
+  /// Populated each [keptNodes] call. RoleInference reads this so its
+  /// descendant-text walk skips occluded subtrees and a surviving ancestor
+  /// (a root Listener etc.) doesn't pick up labels from buried pages.
+  static final Set<Element> _occludedElements = <Element>{};
+  static Set<Element> get occludedElements => _occludedElements;
+
   /// Walks the live tree, applies the snapshot's classify+dedup rules, and
   /// returns the kept nodes in the same DFS-derived order the snapshot uses
   /// to assign `e_<idx>` ids. ElementResolver shares this so resolving
@@ -38,8 +45,25 @@ class SnapshotBuilder {
       subtreeEnd[i] = j - 1;
     }
 
+    // Pushed routes don't unmount what's beneath them — Flutter keeps prior
+    // routes alive so the back-swipe parallax can render. The walker sees
+    // every layout-active element including the ones from underlying
+    // routes (FAB items from MainRoute showing up in a DomainDetails
+    // snapshot, etc.). Mark elements inside an occluded overlay entry so
+    // the snapshot only reports what the user actually sees. RoleInference
+    // also needs the element-keyed set so its descendant-text walk
+    // doesn't pull labels from occluded subtrees into a surviving ancestor.
+    final occluded = _computeOccluded(raw, subtreeEnd);
+    _occludedElements
+      ..clear()
+      ..addAll([
+        for (var i = 0; i < n; i++)
+          if (occluded[i]) raw[i].element,
+      ]);
+
     final promoted = List<bool>.filled(n, false);
     for (var i = 0; i < n; i++) {
+      if (occluded[i]) continue;
       final node = raw[i];
       if (node.bounds == null) continue;
       if (Classifier.classify(node.element.widget) == Classification.promote) {
@@ -207,6 +231,91 @@ class SnapshotBuilder {
         inner.top >= outer.top - eps &&
         inner.right <= outer.right + eps &&
         inner.bottom <= outer.bottom + eps;
+  }
+
+  /// Walks the linear DFS node array looking for `_Theater` nodes (the
+  /// inner widget of every [Overlay], so one per [Navigator]). For each
+  /// theater, finds its direct `_OverlayEntryWidget` children — these are
+  /// the navigator's overlay entries (one per page/route plus modal
+  /// barriers). Iterates them from topmost downward to find the first one
+  /// that is "covering" (its subtree contains a node whose bounds equal
+  /// the viewport). Everything in earlier entries is marked occluded.
+  ///
+  /// Non-covering entries above the topmost covering one (dialogs, snack
+  /// bars, semi-transparent overlays) and the covering entry itself
+  /// remain visible. Below the covering entry, everything is dropped.
+  static List<bool> _computeOccluded(
+      List<RawNode> raw, List<int> subtreeEnd) {
+    final occluded = List<bool>.filled(raw.length, false);
+    final viewport = _viewportRect();
+    if (viewport == null) return occluded;
+
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i].widgetType != '_Theater') continue;
+      final theaterDepth = raw[i].depth;
+      // Collect direct _OverlayEntryWidget children. visitChildren order
+      // matches insertion order on Overlay (bottom-first; last is topmost).
+      final entries = <int>[];
+      for (var j = i + 1; j <= subtreeEnd[i]; j++) {
+        if (raw[j].depth == theaterDepth + 1 &&
+            raw[j].widgetType == '_OverlayEntryWidget') {
+          entries.add(j);
+        }
+      }
+      if (entries.length < 2) continue;
+
+      int? topCoveringIdx;
+      for (var k = entries.length - 1; k >= 0; k--) {
+        if (_subtreeCoversViewport(raw, subtreeEnd, entries[k], viewport)) {
+          topCoveringIdx = k;
+          break;
+        }
+      }
+      if (topCoveringIdx == null) continue;
+
+      // Mark every entry before the topmost covering one — they are buried
+      // under an opaque page and the user can't see them.
+      for (var k = 0; k < topCoveringIdx; k++) {
+        final start = entries[k];
+        final end = subtreeEnd[start];
+        for (var m = start; m <= end; m++) {
+          occluded[m] = true;
+        }
+      }
+    }
+    return occluded;
+  }
+
+  /// Returns true when any node in [root]'s subtree has bounds covering
+  /// at least 98% of [viewport]. The 2% slack handles status bars / safe
+  /// areas that an opaque page sometimes doesn't paint over.
+  static bool _subtreeCoversViewport(
+    List<RawNode> raw,
+    List<int> subtreeEnd,
+    int root,
+    Rect viewport,
+  ) {
+    final viewportArea = viewport.width * viewport.height;
+    if (viewportArea <= 0) return false;
+    final threshold = viewportArea * 0.98;
+    for (var i = root; i <= subtreeEnd[root]; i++) {
+      final b = raw[i].bounds;
+      if (b == null) continue;
+      // Must roughly cover the full viewport AND start near origin —
+      // a viewport-sized list scrolled mid-screen isn't a covering page.
+      if (b.left > viewport.left + 2) continue;
+      if (b.top > viewport.top + 2) continue;
+      final area = b.width * b.height;
+      if (area >= threshold) return true;
+    }
+    return false;
+  }
+
+  static Rect? _viewportRect() {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final size = view.physicalSize / view.devicePixelRatio;
+    if (size.width <= 0 || size.height <= 0) return null;
+    return Offset.zero & size;
   }
 
   /// A generic wrapper this large is almost certainly framework plumbing

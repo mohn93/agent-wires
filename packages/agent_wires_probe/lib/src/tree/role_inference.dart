@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../icons/icon_role_map.dart';
+import 'snapshot_builder.dart';
 
 enum LabelSource { textChild, icon, semantics, sourceLocation, none }
 
@@ -75,6 +76,12 @@ class RoleInference {
     void visit(Element e) {
       if (parts.length >= _maxLabelParts) return;
       if (totalLen >= _maxLabelChars) return;
+      // Don't pull text from occluded subtrees (a buried page underneath
+      // a pushed route, or a page underneath an opaque modal barrier).
+      // A surviving ancestor (the root Listener, the Navigator's Theater)
+      // would otherwise label itself with text from screens the user
+      // can't see.
+      if (SnapshotBuilder.occludedElements.contains(e)) return;
       final w = e.widget;
       // Skip Icon subtrees — their internal RichText carries icon codepoints,
       // not human-readable text.
@@ -121,6 +128,7 @@ class RoleInference {
     String? found;
     void visit(Element e) {
       if (found != null) return;
+      if (SnapshotBuilder.occludedElements.contains(e)) return;
       final w = e.widget;
       if (w is Icon && w.icon != null) {
         final r = IconRoleMap.roleFor(w.icon!);
