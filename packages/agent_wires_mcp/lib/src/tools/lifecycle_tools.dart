@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../mcp/tool.dart';
@@ -20,6 +21,12 @@ List<Tool> lifecycleTools(AppSession session) => [
             'service URI. Idempotent — if already booted, returns '
             'immediately. If a prior boot timed out or was stopped, just '
             'call boot_app again; it will reset and retry.\n\n'
+            'For long boots, pass `wait: false` — boot_app returns '
+            'immediately with state="booting", and you can poll '
+            '`app_status` to watch `latest_progress` ("Running Xcode '
+            'build...", "Installing Pods...") and decide whether to keep '
+            'waiting or `stop_app`. Subsequent action tools (snapshot, '
+            'tap, etc.) auto-wait for the boot to finish.\n\n'
             'After this succeeds, the typical agent loop is:\n'
             '  1. `snapshot` — see what is on screen, get element_ids\n'
             '  2. pick the element you want\n'
@@ -27,13 +34,35 @@ List<Tool> lifecycleTools(AppSession session) => [
             '  4. `wait_for_idle` (or wait_for_route / wait_for_element)\n'
             '  5. `snapshot` again — element_ids from step 1 are now stale\n\n'
             'Use `screenshot` only when you specifically need pixels.',
-        inputSchema: {'type': 'object', 'properties': {}},
-        handler: (_) async {
-          try {
-            await session.ensureReady();
-          } catch (e) {
-            return _toolError('boot_app failed: $e');
+        inputSchema: {
+          'type': 'object',
+          'properties': {
+            'wait': {
+              'type': 'boolean',
+              'description':
+                  'When false, kick off the boot in the background and '
+                  'return state="booting" immediately so you can poll '
+                  'app_status during a long compile. Default true (block '
+                  'until ready). Use false when you expect the boot to '
+                  'take more than a minute or two.',
+            },
+          },
+        },
+        handler: (args) async {
+          final wait = args['wait'] != false;
+          if (wait) {
+            try {
+              await session.ensureReady();
+            } catch (e) {
+              return _toolError('boot_app failed: $e');
+            }
+            return _toolResult(jsonEncode(_statusPayload(session)));
           }
+          // Fire-and-forget: kick off the boot but don't await it. Errors
+          // surface via app_status.lastError on the next poll. Subsequent
+          // tool calls (snapshot etc.) auto-wait via ensureReady's shared
+          // boot future.
+          unawaited(_fireAndForgetBoot(session));
           return _toolResult(jsonEncode(_statusPayload(session)));
         },
       ),
@@ -118,6 +147,16 @@ List<Tool> lifecycleTools(AppSession session) => [
         },
       ),
     ];
+
+Future<void> _fireAndForgetBoot(AppSession session) async {
+  try {
+    await session.ensureReady();
+  } catch (_) {
+    // Errors are observable via app_status.last_error on the next poll.
+    // Swallowing here prevents an unhandled-exception crash on the MCP
+    // server's root zone.
+  }
+}
 
 Map<String, dynamic> _statusPayload(AppSession session) => {
       'state': session.state.name,

@@ -65,6 +65,36 @@ void main() {
     expect(payload['mode'], 'vm_service');
     expect(payload['success'], isTrue);
   });
+
+  test('boot_app with wait:false returns immediately without booting',
+      () async {
+    // Use a lazy session that points at a bogus directory — if boot_app
+    // waited synchronously this would block for the timeout. With wait:false
+    // we return state="booting" immediately and the agent can poll.
+    final session = AppSession.lazy(workingDirectory: '/does/not/exist');
+    final tools = lifecycleTools(session);
+    final boot = tools.firstWhere((t) => t.name == 'boot_app');
+    final stopwatch = Stopwatch()..start();
+    final payload = _decode(await boot.handler({'wait': false}));
+    stopwatch.stop();
+    expect(payload['state'], anyOf('booting', 'exited'),
+        reason: 'should return without waiting for boot to complete');
+    expect(stopwatch.elapsed.inSeconds, lessThan(2),
+        reason: 'fire-and-forget should return promptly');
+  });
+
+  test(
+      'boot_app default (wait omitted) still blocks and surfaces the error',
+      () async {
+    // wait defaults to true, so this should propagate the boot failure
+    // as an isError tool result. Uses a bogus dir; flutter exits quickly
+    // with "No pubspec.yaml" so this isn't slow.
+    final session = AppSession.lazy(workingDirectory: '/does/not/exist');
+    final tools = lifecycleTools(session);
+    final boot = tools.firstWhere((t) => t.name == 'boot_app');
+    final result = await boot.handler({});
+    expect(result['isError'], isTrue);
+  });
 }
 
 class _RecordingVm extends VmClient {

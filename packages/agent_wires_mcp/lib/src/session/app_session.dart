@@ -45,6 +45,10 @@ class AppSession {
   VmClient? _vm;
   AppState _state = AppState.idle;
   String? _lastError;
+  // Cached separately from the runner so it survives runner disposal — the
+  // diagnostic value of "what was flutter doing when it died?" is gone if
+  // we read it through the (now-null) runner.
+  String? _latestProgress;
   Future<VmClient>? _bootFuture;
 
   AppState get state => _state;
@@ -54,9 +58,10 @@ class AppSession {
       _state == AppState.ready ? _runner?.vmServiceUriOrNull : null;
 
   /// The latest progress message from `flutter run --machine` (Xcode build
-  /// step, Pod install line, dart compile progress). Useful for diagnosing
-  /// a slow or stuck boot.
-  String? get latestProgress => _runner?.latestProgress;
+  /// step, Pod install line, dart compile progress). Cached on the session
+  /// so it persists after the runner is disposed — that's exactly when the
+  /// agent needs to see what flutter was doing when the boot failed.
+  String? get latestProgress => _latestProgress;
 
   /// Returns the connected [VmClient]. If the session is lazy and hasn't been
   /// booted yet (or a previous boot timed out / was stopped), this kicks off
@@ -100,6 +105,7 @@ class AppSession {
   Future<VmClient> _boot() async {
     _state = AppState.booting;
     _lastError = null;
+    _latestProgress = null;
     try {
       final runner = FlutterRunner(
         workingDirectory: _workingDirectory!,
@@ -107,8 +113,13 @@ class AppSession {
         flutterArgs: _flutterArgs,
         // Stream flutter's progress messages to MCP server stderr so the
         // human (and Claude Code's MCP log viewer) can see what's happening
-        // during a multi-minute cold compile.
-        onProgress: (msg) => stderr.writeln('agent_wires_mcp: $msg'),
+        // during a multi-minute cold compile. Also cache on the session
+        // itself so it survives a boot failure / runner disposal — the
+        // agent reads it via app_status to diagnose stuck boots.
+        onProgress: (msg) {
+          _latestProgress = msg;
+          stderr.writeln('agent_wires_mcp: $msg');
+        },
       );
       _runner = runner;
       // Large Flutter apps (firebase, syncfusion, flutter_quill, etc.) can
