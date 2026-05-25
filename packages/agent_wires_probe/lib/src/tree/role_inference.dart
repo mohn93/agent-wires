@@ -81,7 +81,7 @@ class RoleInference {
       // A surviving ancestor (the root Listener, the Navigator's Theater)
       // would otherwise label itself with text from screens the user
       // can't see.
-      if (SnapshotBuilder.occludedElements.contains(e)) return;
+      if (SnapshotBuilder.hiddenElements.contains(e)) return;
       final w = e.widget;
       // Skip Icon subtrees — their internal RichText carries icon codepoints,
       // not human-readable text.
@@ -128,7 +128,7 @@ class RoleInference {
     String? found;
     void visit(Element e) {
       if (found != null) return;
-      if (SnapshotBuilder.occludedElements.contains(e)) return;
+      if (SnapshotBuilder.hiddenElements.contains(e)) return;
       final w = e.widget;
       if (w is Icon && w.icon != null) {
         final r = IconRoleMap.roleFor(w.icon!);

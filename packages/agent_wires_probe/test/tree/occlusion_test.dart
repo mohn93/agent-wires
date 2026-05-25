@@ -127,7 +127,7 @@ void main() {
     final theaters = occlusion['theaters'] as List?;
     expect(theaters, isNotNull);
     // The inner Navigator's theater has 2 entries; details should reflect that.
-    final twoEntryTheater = (theaters! as List).cast<Map>().firstWhere(
+    final twoEntryTheater = theaters!.cast<Map>().firstWhere(
           (t) => t['entry_count'] == 2,
           orElse: () => const {},
         );
@@ -180,6 +180,54 @@ void main() {
     expect(labels, isNot(contains('UNDER')),
         reason: 'top page covers the 300×500 theater box (not the global '
             'window) — under page must still be dropped');
+  });
+
+  testWidgets(
+      'transparent _CaptureAll text-editing overlay does not occlude the page',
+      (tester) async {
+    // When a text field is focused, Flutter inserts text-editing / selection
+    // overlay entries on top of the page. Each is wrapped by
+    // InheritedTheme.captureAll — a transparent `_CaptureAll` that re-provides
+    // inherited themes across the Overlay boundary. It fills the viewport
+    // geometrically but paints nothing, so the page beneath stays visible to
+    // the user. The occlusion pass must NOT treat it as a covering entry and
+    // drop the real page (which is exactly what made every text-field screen
+    // come back empty in the field report).
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (_) => Overlay(
+          initialEntries: [
+            OverlayEntry(
+              builder: (_) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {},
+                    child: const Text('PageButton'),
+                  ),
+                ),
+              ),
+            ),
+            // The transparent text-editing overlay: a full-viewport
+            // `_CaptureAll` wrapping an empty box. Topmost, covers the
+            // viewport geometrically, paints nothing.
+            OverlayEntry(
+              builder: (ctx) =>
+                  InheritedTheme.captureAll(ctx, const SizedBox.expand()),
+            ),
+          ],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final snap = SnapshotBuilder.build();
+    final labels = [
+      ...snap.elements.map((e) => e.label),
+      ...snap.unresolved.map((e) => e.label),
+    ].whereType<String>().toList();
+    expect(labels, contains('PageButton'),
+        reason: 'a transparent _CaptureAll overlay must not drop the page '
+            'beneath it — the page is what the user actually sees');
   });
 }
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.4
+
+Perception-accuracy fixes from real LLM-agent driving sessions. No API
+changes; `AgentWiresProbe.install()` is unchanged.
+
+### Snapshot — only report what the user can actually see and touch
+
+- **Transparent text-editing overlays no longer drop the page.** When a
+  text field is focused, Flutter inserts text-editing / selection /
+  autocomplete overlay entries wrapped by `InheritedTheme.captureAll`
+  (`_CaptureAll`). They fill the viewport geometrically but paint
+  nothing, so the containment cover test treated them as a covering page
+  and occluded the real route beneath — every text-field screen
+  (`DomainRegisterRoute`, etc.) came back with an empty snapshot. The
+  cover test now ignores transient overlays (a `_CaptureAll` with no
+  `_ModalScope`/`ModalBarrier` in its subtree); only opaque routes and
+  modal barriers occlude.
+- **Pointer-blocked elements are filtered ("phantom FAB").** An
+  expandable FAB keeps its collapsed sub-items mounted and laid out but
+  wraps them in `IgnorePointer`/`AbsorbPointer`, so a tap can't reach
+  them. Elements under an `ignoring`/`absorbing` wrapper are no longer
+  surfaced as actionable. Opacity is deliberately *not* used as the
+  signal — a transparent widget still receives taps in Flutter, so
+  hiding by opacity would diverge from real tap behaviour.
+
 ## 0.1.3
 
 Post-launch iteration driven by real LLM-agent driving sessions. No

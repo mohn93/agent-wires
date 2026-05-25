@@ -19,12 +19,14 @@ class SnapshotBuilder {
     'InkWell',
   };
 
-  /// Identity-set of Elements that live beneath an opaque pushed route.
-  /// Populated each [keptNodes] call. RoleInference reads this so its
-  /// descendant-text walk skips occluded subtrees and a surviving ancestor
-  /// (a root Listener etc.) doesn't pick up labels from buried pages.
-  static final Set<Element> _occludedElements = <Element>{};
-  static Set<Element> get occludedElements => _occludedElements;
+  /// Identity-set of Elements that are hidden from the user — either buried
+  /// beneath an opaque pushed route (occlusion) or sitting under a
+  /// pointer-blocking wrapper (IgnorePointer/AbsorbPointer). Populated each
+  /// [keptNodes] call. RoleInference reads this so its descendant-text walk
+  /// skips hidden subtrees and a surviving ancestor (a root Listener etc.)
+  /// doesn't pick up labels from content the user can't see or touch.
+  static final Set<Element> _hiddenElements = <Element>{};
+  static Set<Element> get hiddenElements => _hiddenElements;
 
   /// Diagnostic counts from the most recent [keptNodes] run. The agent
   /// reads this via SnapshotRecord._debug to verify the route-scoping
@@ -61,16 +63,28 @@ class SnapshotBuilder {
     // also needs the element-keyed set so its descendant-text walk
     // doesn't pull labels from occluded subtrees into a surviving ancestor.
     final occluded = _computeOccluded(raw, subtreeEnd);
-    _occludedElements
+
+    // A laid-out element isn't necessarily interactable: an expandable FAB
+    // keeps its collapsed sub-items mounted (with real bounds) but wraps them
+    // in IgnorePointer/AbsorbPointer so no tap can reach them. Surfacing them
+    // produced the "phantom FAB" mis-taps in the field report. Mark every
+    // subtree under a pointer-blocking wrapper so it's dropped alongside
+    // occluded content.
+    final pointerIgnored = _computePointerIgnored(raw, subtreeEnd);
+
+    final hidden = <bool>[
+      for (var i = 0; i < n; i++) occluded[i] || pointerIgnored[i],
+    ];
+    _hiddenElements
       ..clear()
       ..addAll([
         for (var i = 0; i < n; i++)
-          if (occluded[i]) raw[i].element,
+          if (hidden[i]) raw[i].element,
       ]);
 
     final promoted = List<bool>.filled(n, false);
     for (var i = 0; i < n; i++) {
-      if (occluded[i]) continue;
+      if (hidden[i]) continue;
       final node = raw[i];
       if (node.bounds == null) continue;
       if (Classifier.classify(node.element.widget) == Classification.promote) {
@@ -298,7 +312,13 @@ class SnapshotBuilder {
       final covers = <bool>[];
       final entryDescs = <Map<String, dynamic>>[];
       for (var k = 0; k < entries.length; k++) {
-        final c =
+        // A geometrically full-viewport entry only OCCLUDES what's beneath it
+        // if it actually paints something opaque. Transparent text-editing /
+        // selection / autocomplete overlays (wrapped by
+        // InheritedTheme.captureAll → `_CaptureAll`) fill the viewport but
+        // paint nothing, so they must not be treated as covering — otherwise
+        // focusing a text field drops the entire page from the snapshot.
+        final c = !_isTransientOverlayEntry(raw, subtreeEnd, entries[k]) &&
             _subtreeCoversViewport(raw, subtreeEnd, entries[k], theaterRect);
         covers.add(c);
         entryDescs.add(_describeEntry(raw, subtreeEnd, entries[k], c));
@@ -342,6 +362,29 @@ class SnapshotBuilder {
     return occluded;
   }
 
+  /// Marks every subtree rooted at an `IgnorePointer(ignoring: true)` or
+  /// `AbsorbPointer(absorbing: true)`. Those wrappers stop pointer events from
+  /// reaching their descendants, so however laid-out those descendants are,
+  /// the user cannot tap them — they must not be reported as actionable.
+  /// Opacity/visibility are deliberately NOT used here: a transparent widget
+  /// still receives taps in Flutter, so hiding it would diverge from real
+  /// tap behaviour. Pointer-blocking is the honest signal.
+  static List<bool> _computePointerIgnored(
+      List<RawNode> raw, List<int> subtreeEnd) {
+    final ignored = List<bool>.filled(raw.length, false);
+    for (var i = 0; i < raw.length; i++) {
+      if (ignored[i]) continue; // already inside a blocked subtree
+      final widget = raw[i].element.widget;
+      final blocks = (widget is IgnorePointer && widget.ignoring) ||
+          (widget is AbsorbPointer && widget.absorbing);
+      if (!blocks) continue;
+      for (var j = i; j <= subtreeEnd[i]; j++) {
+        ignored[j] = true;
+      }
+    }
+    return ignored;
+  }
+
   /// Returns true when any node in [root]'s subtree *encloses* [target]
   /// (within 2px slack on every edge). Containment — not area — so a page
   /// that's been parallax-shifted out from under the top route (same area,
@@ -367,6 +410,29 @@ class SnapshotBuilder {
       }
     }
     return false;
+  }
+
+  /// True for an overlay entry that is a transparent, transient overlay
+  /// rather than a real opaque page/barrier. Flutter wraps text-editing,
+  /// text-selection, autocomplete and similar transient overlays in
+  /// `InheritedTheme.captureAll` (runtime type `_CaptureAll`) to carry
+  /// inherited themes across the Overlay boundary; these fill the viewport
+  /// geometrically but paint nothing. A real covering entry instead contains
+  /// a route's `_ModalScope` or a `ModalBarrier`. So: an entry is transient
+  /// iff its subtree contains a `_CaptureAll` and neither a `_ModalScope`
+  /// nor a `ModalBarrier`.
+  static bool _isTransientOverlayEntry(
+    List<RawNode> raw,
+    List<int> subtreeEnd,
+    int root,
+  ) {
+    var hasCaptureAll = false;
+    for (var i = root; i <= subtreeEnd[root]; i++) {
+      final t = raw[i].widgetType;
+      if (t == 'ModalBarrier' || t.startsWith('_ModalScope')) return false;
+      if (t == '_CaptureAll') hasCaptureAll = true;
+    }
+    return hasCaptureAll;
   }
 
   /// Diagnostic description of one overlay entry: the first few descendant
