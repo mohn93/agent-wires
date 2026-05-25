@@ -65,6 +65,24 @@ void main() {
     });
   });
 
+  group('AppSession.isProbeAlive', () {
+    test('false when the session has never become ready', () async {
+      final session = AppSession.lazy(workingDirectory: '/tmp');
+      expect(await session.isProbeAlive(), isFalse);
+    });
+
+    test('false after dispose', () async {
+      final session = AppSession.attached(_AliveVm());
+      await session.dispose();
+      expect(await session.isProbeAlive(), isFalse);
+    });
+
+    test('delegates to the VmClient when ready', () async {
+      final session = AppSession.attached(_AliveVm());
+      expect(await session.isProbeAlive(), isTrue);
+    });
+  });
+
   group('AppSession exited recovery', () {
     test('attached session stays terminal once exited', () async {
       final session = AppSession.attached(_FakeVm());
@@ -104,4 +122,11 @@ void main() {
 
 class _FakeVm extends VmClient {
   _FakeVm() : super.test();
+}
+
+class _AliveVm extends VmClient {
+  _AliveVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => true;
 }

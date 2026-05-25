@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.2
+
+Hot-restart robustness from real LLM-agent driving sessions. No tool
+additions; `app_status` gains a `probe_attached` field.
+
+### Self-healing isolate binding
+
+- **Recovers from hot restart automatically.** A hot restart collects
+  the QA isolate and starts a new one. The client used to keep calling
+  the dead isolate id, so every `ext.qa.*` call failed with
+  `[Sentinel kind: Collected]` for the rest of the session and never
+  recovered. `callExtension` now re-resolves the live `ext.qa.*` isolate
+  and retries once on a stale-isolate error, so a single tool call
+  recovers transparently.
+- **`app_status` reports `probe_attached`.** Distinct from `state`,
+  which only tracks the `flutter run` process: after a hot restart the
+  process stays up (`state` stays `ready`) but the probe moves to a
+  fresh isolate. `state:"ready"` with `probe_attached:false` now tells
+  the agent the probe is reattaching, instead of looking healthy while
+  every call fails. The check re-resolves and rebinds when the bound
+  isolate has been collected.
+- **Clearer error when the probe is truly gone.** If re-resolution
+  fails (the app exited, or hot-restarted without
+  `AgentWiresProbe.install()`), the agent gets an actionable message
+  instead of the raw VM-service sentinel string.
+
 ## 0.1.1
 
 Post-0.1.0 iteration driven by real LLM-agent driving sessions. **Tool

@@ -82,6 +82,17 @@ class AppSession {
     _deviceId = deviceId;
   }
 
+  /// Whether the QA probe is actually reachable right now — distinct from
+  /// [state], which only tracks the `flutter run` process. After a hot
+  /// restart the process stays up (`state == ready`) but the probe lives in a
+  /// fresh isolate; this asks the [VmClient], which re-resolves and rebinds if
+  /// the previously-bound isolate was collected. `app_status` surfaces this so
+  /// the agent can tell "process alive but probe gone" from "all good".
+  Future<bool> isProbeAlive() async {
+    if (_state != AppState.ready || _vm == null) return false;
+    return _vm!.isProbeAlive();
+  }
+
   /// Returns the connected [VmClient]. If the session is lazy and hasn't been
   /// booted yet (or a previous boot timed out / was stopped), this kicks off
   /// `flutter run --machine`, waits for the VM service URI, and attaches.

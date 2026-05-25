@@ -124,9 +124,19 @@ List<Tool> lifecycleTools(AppSession session) => [
             'When boot_app appears stuck, call app_status to see what step '
             'it is on; a stale latest_progress for several minutes means '
             'the underlying flutter process is hung. Cheap; safe to poll. '
-            'Never starts the app.',
+            'Never starts the app.\n\n'
+            'Also returns `probe_attached` (bool): whether the in-app probe '
+            'is actually reachable, SEPARATE from `state`. After a hot_restart '
+            'the flutter process stays up (state stays "ready") but the probe '
+            'moves to a fresh isolate. state="ready" with '
+            'probe_attached=false means the probe is reattaching — just retry '
+            'your next tool call (snapshot/tap auto-recover).',
         inputSchema: {'type': 'object', 'properties': {}},
-        handler: (_) async => _toolResult(jsonEncode(_statusPayload(session))),
+        handler: (_) async {
+          final payload = _statusPayload(session);
+          payload['probe_attached'] = await session.isProbeAlive();
+          return _toolResult(jsonEncode(payload));
+        },
       ),
       Tool(
         name: 'stop_app',

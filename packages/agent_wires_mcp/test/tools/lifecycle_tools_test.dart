@@ -35,6 +35,27 @@ void main() {
         reason: 'app_status must not trigger a boot');
   });
 
+  test('app_status reports probe_attached:false for an idle session', () async {
+    final session = AppSession.lazy(workingDirectory: '/tmp');
+    final tools = lifecycleTools(session);
+    final status = tools.firstWhere((t) => t.name == 'app_status');
+    final payload = _decode(await status.handler({}));
+    expect(payload['probe_attached'], isFalse,
+        reason: 'an un-booted session has no live probe');
+  });
+
+  test('app_status reports probe_attached:true when the probe is alive',
+      () async {
+    // Distinguishes probe liveness from process liveness — the gap that made
+    // a hot-restart desync look like state:ready while every call failed.
+    final session = AppSession.attached(_AliveVm());
+    final tools = lifecycleTools(session);
+    final status = tools.firstWhere((t) => t.name == 'app_status');
+    final payload = _decode(await status.handler({}));
+    expect(payload['state'], 'ready');
+    expect(payload['probe_attached'], isTrue);
+  });
+
   test('stop_app flips an attached session to exited', () async {
     final session = AppSession.attached(_FakeVm());
     final tools = lifecycleTools(session);
@@ -116,4 +137,11 @@ Map<String, dynamic> _decode(Map<String, dynamic> toolResult) {
 
 class _FakeVm extends VmClient {
   _FakeVm() : super.test();
+}
+
+class _AliveVm extends VmClient {
+  _AliveVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => true;
 }
