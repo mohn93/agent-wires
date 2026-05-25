@@ -1,6 +1,6 @@
 name: agent_wires_mcp
 description: MCP server that bridges an LLM agent to a running Flutter app via the Dart VM service. Pairs with agent_wires_probe.
-version: 0.1.0
+version: 0.1.1
 
 homepage: https://github.com/mohn93/agent-wires/tree/main/packages/agent_wires_mcp
 repository: https://github.com/mohn93/agent-wires

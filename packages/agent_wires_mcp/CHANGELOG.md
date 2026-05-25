@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
 Post-0.1.0 iteration driven by real LLM-agent driving sessions. **Tool
 count grows from 18 → 23** (5 new lifecycle tools). Several tool input
