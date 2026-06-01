@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.5
+
+Boot reliability fix.
+
+### Fail fast when `flutter run` dies during boot
+
+- **`boot_app` no longer hangs for the full timeout when the build fails.**
+  `FlutterRunner.start` awaited the VM-service URI (up to 10 min) but never
+  watched the flutter process itself. If `flutter run --machine` spawned,
+  printed progress ("Running Xcode build..."), then **exited** without
+  emitting a recognised failure event — a codesign/build failure, no matching
+  device, or `flutter` resolving to the wrong SDK (e.g. an fvm-managed Flutter
+  not on the spawned `PATH`) — the boot wedged on the timeout while
+  `app_status` showed a frozen progress line and no flutter/xcodebuild process
+  was even alive. `start` now also watches `exitCode` and fails the boot
+  immediately when flutter exits early, attaching a tail of flutter's stderr
+  and the likely causes so the agent gets an actionable error in seconds
+  instead of a multi-minute hang.
+
 ## 0.1.4
 
 Docs-only release. No code changes — refreshes the README to match the 0.1.3
