@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'process_tree.dart';
+
 /// Drives `flutter run --machine` as a subprocess, parses its newline-delimited
 /// JSON event stream for the VM service URI, captures the appId, and exposes
 /// hot-reload / hot-restart commands over the same stdin pipe.
@@ -202,7 +204,12 @@ class FlutterRunner {
   Future<void> stop() async {
     final proc = _process;
     if (proc == null) return;
-    proc.kill();
+    // Reap the whole tree, not just the flutter PID: `flutter run` forks a DDS
+    // (`dart development-service`), and on a physical device a devicectl/script
+    // wrapper plus an `iproxy` USB tunnel. Killing only `proc` orphans those to
+    // launchd, where they keep contending for the device + VM-service and
+    // destabilise the next session (#2).
+    await ProcessTree.reap(proc.pid);
     await proc.exitCode;
     _process = null;
     _appId = null;
