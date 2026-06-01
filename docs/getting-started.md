@@ -22,7 +22,7 @@ release dep graph is cleaner):
 
 ```yaml
 dev_dependencies:
-  agent_wires_probe: ^0.1.0
+  agent_wires_probe: ^0.1.5
 ```
 
 ```bash
@@ -101,7 +101,7 @@ Add to `~/.claude.json` (create the file if it doesn't exist):
 ```
 
 Add `--flavor <name>` and `-t lib/main_<flavor>.dart` if your app uses
-flavors. Restart Claude Code; the agent now has access to all 23 tools.
+flavors. Restart Claude Code; the agent now has access to all 24 tools.
 
 ### Claude Desktop
 
@@ -139,7 +139,9 @@ Other things to try once the first snapshot returns:
 - "Tap the Checkout button" — agent calls `snapshot` then `tap`.
 - "Scroll down" — `scroll(direction: down)`.
 - "Type 'hello' into the search box" — `enter_text`.
-- "Take a screenshot" — `screenshot` returns base64 PNG.
+- "Take a screenshot" — `screenshot` saves a PNG and returns its `path`
+  (plus `width`/`height`/`size_bytes`); pass `return_base64: true` for
+  inline base64 instead.
 - "Show me the screen with numbered boxes" — `screenshot(annotated: true)`
   draws Set-of-Mark overlays.
 
@@ -181,6 +183,13 @@ project; commit that file to share the vocabulary with your team.
 - **`flutter` not on PATH** — `agent_wires_mcp run` shells out to `flutter`.
   Make sure the MCP client's spawned env can find it (often means setting
   `PATH` in your shell's login profile, not just `.bashrc`).
+- **App looks frozen on a physical iPhone** — if `app_status` reports
+  `paused_at_start: true`, the launch came up with its main isolate paused
+  and never resumed. The server now auto-resumes on attach; if it persists,
+  `stop_app` + `boot_app` re-launches cleanly.
+- **`app_status` shows `probe_version_warning`** — the app was built against
+  a different `agent_wires_probe` than this server pairs with. Bump the
+  probe dep to match and rebuild; protocol drift can cause odd hangs.
 - **VM service connects but tools return empty** — usually means the app
   hasn't pumped its first frame yet. `wait_for_idle` once, then snapshot.
 - **Multiple devices connected** — use `list_devices` and pass the
