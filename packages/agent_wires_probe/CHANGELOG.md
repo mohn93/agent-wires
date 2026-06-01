@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+Docs-only release. No code or API changes — refreshes the README so the
+pub.dev page reflects the 0.1.5 screenshot and `ping` version-reporting
+behaviour and bumps the install snippet to `^0.1.6`.
+
 ## 0.1.5
 
 Screenshot reliability + version reporting from a real LLM-agent driving

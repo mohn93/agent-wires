@@ -3,4 +3,4 @@
 /// drift between the two has been observed to cause odd hangs (#6).
 ///
 /// Keep this in sync with `pubspec.yaml`.
-const String probeVersion = '0.1.5';
+const String probeVersion = '0.1.6';

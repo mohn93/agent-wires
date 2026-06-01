@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.4
+
+Docs-only release. No code changes — refreshes the README to match the 0.1.3
+tool surface and behaviour so the pub.dev page is accurate.
+
+- Removes the `-d` device pin from the MCP config examples (it contradicted
+  the "don't pin at registration" guidance and is the phone-vs-simulator stall
+  trap); the agent picks a device at session time via `list_devices` +
+  `boot_app`.
+- Corrects the tool count to 24.
+- Documents that `screenshot` returns `{path, …}` by default (base64 via
+  `return_base64: true`).
+- `recommendedProbeVersion` tracks `agent_wires_probe` 0.1.6.
+
 ## 0.1.3
 
 Connection- and lifecycle-hardening from a real LLM-agent driving session

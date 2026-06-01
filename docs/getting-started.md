@@ -22,7 +22,7 @@ release dep graph is cleaner):
 
 ```yaml
 dev_dependencies:
-  agent_wires_probe: ^0.1.5
+  agent_wires_probe: ^0.1.6
 ```
 
 ```bash
