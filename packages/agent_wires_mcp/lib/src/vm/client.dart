@@ -222,6 +222,20 @@ class VmClient {
     }
   }
 
+  /// The probe's self-reported version (from `ext.qa.ping`), or null if the
+  /// probe is unreachable or predates version reporting. Never throws — a
+  /// version check must not be able to break a tool call. Used to warn on
+  /// probe/server version skew (#6).
+  Future<String?> probeVersion() async {
+    try {
+      final res = await callExtension('ext.qa.ping');
+      final v = res['probe_version'];
+      return v is String ? v : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> _boundIsolateHasQa() async {
     if (_isolateId.isEmpty) return false;
     try {

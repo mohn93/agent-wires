@@ -117,6 +117,56 @@ void main() {
     final result = await boot.handler({});
     expect(result['isError'], isTrue);
   });
+
+  group('probe version skew warning (#6)', () {
+    test('warns when the running probe differs from the expected version', () {
+      final w =
+          probeVersionSkewWarning(expected: '0.1.4', actual: '0.1.2');
+      expect(w, isNotNull);
+      expect(w, contains('0.1.2'));
+      expect(w, contains('0.1.4'));
+    });
+
+    test('no warning when versions match', () {
+      expect(probeVersionSkewWarning(expected: '0.1.4', actual: '0.1.4'),
+          isNull);
+    });
+
+    test('no warning when the probe version is unknown (older probe)', () {
+      expect(
+          probeVersionSkewWarning(expected: '0.1.4', actual: null), isNull);
+    });
+
+    test('app_status surfaces probe_version and a skew warning', () async {
+      final session = AppSession.attached(_SkewedProbeVm());
+      final tools = lifecycleTools(session);
+      final status = tools.firstWhere((t) => t.name == 'app_status');
+      final payload = _decode(await status.handler({}));
+      expect(payload['probe_version'], '0.0.1-old');
+      expect(payload['probe_version_warning'], isNotNull);
+      expect(payload['probe_version_warning'], contains('0.0.1-old'));
+    });
+  });
+
+  group('boot_app force-stop on device change (#6)', () {
+    test('only a running lazy session on a different device is force-stopped',
+        () {
+      bool decide(bool attached, AppState s, String? cur, String req) =>
+          AppSession.shouldForceStopForDevice(
+            attached: attached,
+            state: s,
+            currentDevice: cur,
+            requestedDevice: req,
+          );
+      expect(decide(false, AppState.ready, 'iphone', 'sim'), isTrue);
+      expect(decide(false, AppState.ready, 'iphone', 'iphone'), isFalse,
+          reason: 'same device — no need to restart');
+      expect(decide(false, AppState.idle, null, 'sim'), isFalse,
+          reason: 'nothing running to stop');
+      expect(decide(true, AppState.ready, 'iphone', 'sim'), isFalse,
+          reason: 'attached sessions cannot switch device');
+    });
+  });
 }
 
 class _RecordingVm extends VmClient {
@@ -144,4 +194,15 @@ class _AliveVm extends VmClient {
 
   @override
   Future<bool> isProbeAlive() async => true;
+}
+
+/// Alive probe reporting a stale version, to exercise the skew warning path.
+class _SkewedProbeVm extends VmClient {
+  _SkewedProbeVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => true;
+
+  @override
+  Future<String?> probeVersion() async => '0.0.1-old';
 }

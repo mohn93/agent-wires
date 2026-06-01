@@ -124,6 +124,22 @@ void main() {
     });
   });
 
+  group('probeVersion (#6)', () {
+    test('returns the version the probe reports over ping', () async {
+      final vm = _PingVm('0.1.4');
+      expect(await vm.probeVersion(), '0.1.4');
+    });
+
+    test('returns null when the probe predates version reporting', () async {
+      final vm = _PingVm(null);
+      expect(await vm.probeVersion(), isNull);
+    });
+
+    test('returns null (does not throw) when the call fails', () async {
+      expect(await _GoneProbeVm().probeVersion(), isNull);
+    });
+  });
+
   group('isProbeAlive', () {
     test('returns false when no isolate has ever been bound', () async {
       expect(await VmClient.test().isProbeAlive(), isFalse);
@@ -225,6 +241,18 @@ class _HangingVm extends VmClient {
       String name, Map<String, String> args) {
     rawCalls++;
     return Completer<Map<String, dynamic>>().future; // never completes
+  }
+}
+
+/// Returns a ping payload carrying (or omitting) a probe_version field.
+class _PingVm extends VmClient {
+  _PingVm(this.version) : super.test();
+  final String? version;
+
+  @override
+  Future<Map<String, dynamic>> rawCallExtension(
+      String name, Map<String, String> args) async {
+    return {'ok': true, if (version != null) 'probe_version': version};
   }
 }
 
