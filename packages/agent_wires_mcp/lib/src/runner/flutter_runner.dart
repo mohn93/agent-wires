@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:meta/meta.dart';
+
 import 'process_tree.dart';
 
 /// Drives `flutter run --machine` as a subprocess, parses its newline-delimited
@@ -107,6 +109,26 @@ class FlutterRunner {
       _restart(fullRestart: true, timeout: timeout);
 
   Future<Map<String, dynamic>> _restart({
+    required bool fullRestart,
+    required Duration timeout,
+  }) async {
+    var res = await sendRestart(fullRestart: fullRestart, timeout: timeout);
+    if (!isDevFsSyncFailure(res)) return res;
+    // DevFS sync hiccups are often transient (a late device, a half-applied
+    // diff). Retry the same operation once to re-establish the DevFS before
+    // giving up (#5).
+    res = await sendRestart(fullRestart: fullRestart, timeout: timeout);
+    if (!isDevFsSyncFailure(res)) return res;
+    // Still wedged after a retry — DevFS won't recover via reload/restart.
+    // Surface that explicitly with the recovery path rather than a bare fail.
+    return withDevFsRecoveryHint(res);
+  }
+
+  /// Sends a single `app.restart` to `flutter run --machine` and awaits its
+  /// response: `{code: int, message?: String}`. Seam for tests and for the
+  /// DevFS retry wrapper in [_restart].
+  @visibleForTesting
+  Future<Map<String, dynamic>> sendRestart({
     required bool fullRestart,
     required Duration timeout,
   }) async {
@@ -221,6 +243,25 @@ class FlutterRunner {
 }
 
 enum FlutterRunMode { run, test }
+
+/// True when an `app.restart` response is the flutter "DevFS synchronization
+/// failed" error — the wedge where hot reload/restart can no longer push code.
+/// Visible for testing.
+bool isDevFsSyncFailure(Map<String, dynamic> result) {
+  if (result['code'] == 0) return false;
+  final message = (result['message'] ?? '').toString().toLowerCase();
+  return message.contains('devfs synchronization');
+}
+
+/// Annotates an unrecoverable DevFS failure with the actual recovery path, so
+/// the agent gets an actionable next step instead of a bare `success:false`.
+/// Visible for testing.
+Map<String, dynamic> withDevFsRecoveryHint(Map<String, dynamic> result) => {
+      ...result,
+      'recoverable': false,
+      'hint': 'DevFS is wedged and a retry did not recover. Hot reload/restart '
+          'cannot fix this — run stop_app then boot_app to rebuild.',
+    };
 
 dynamic _safeDecode(String line) {
   try {
