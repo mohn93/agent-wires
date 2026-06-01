@@ -11,7 +11,7 @@
 
 The agent sees a denoised semantic tree (16 elements per screen, not 800)
 and can tap, type, scroll, wait for navigation, read logs, and watch
-network calls — through 18 MCP tools. The probe lives inside your app as
+network calls — through 24 MCP tools. The probe lives inside your app as
 a dev dependency, the server runs locally, your data never leaves the
 machine.
 
@@ -29,7 +29,7 @@ machine.
 ```yaml
 # pubspec.yaml
 dev_dependencies:
-  agent_wires_probe: ^0.1.0
+  agent_wires_probe: ^0.1.5
 ```
 
 ```dart
@@ -70,15 +70,17 @@ dart pub global activate agent_wires_mcp
       "command": "agent_wires_mcp",
       "args": [
         "run",
-        "--project", "/path/to/your/flutter/app",
-        "-d",        "<device-id from `flutter devices`>"
+        "--project", "/path/to/your/flutter/app"
       ]
     }
   }
 }
 ```
 
-Restart your client and ask the agent to take a snapshot.
+Don't pin a device here — the agent picks one at session time via
+`list_devices` + `boot_app(device_id: ...)`, which avoids the classic
+"phone + simulator both connected, flutter grabs the phone and stalls on
+signing" trap. Restart your client and ask the agent to take a snapshot.
 
 → Full walkthrough: [docs/getting-started.md](docs/getting-started.md).
 
@@ -116,7 +118,7 @@ snapshot                       → confirm the new state
 ```
 
 The whole tool surface, with input schemas, is documented in the
-[`agent_wires_mcp` README](packages/agent_wires_mcp#tool-surface-23-tools).
+[`agent_wires_mcp` README](packages/agent_wires_mcp#tool-surface-24-tools).
 
 ## How it works
 
@@ -128,7 +130,7 @@ The whole tool surface, with input schemas, is documented in the
                          ▼
 ┌─────────────────────────────────────────────────────┐
 │  agent_wires_mcp  (Dart CLI, separate process)       │
-│    23 tools (lifecycle + perception + action +      │
+│    24 tools (lifecycle + perception + action +      │
 │              sync + observability + memory)         │
 │    AST source-location proposals                    │
 │    per-project semantic map (.flutter_qa/map.json)  │
@@ -173,8 +175,8 @@ docs/
 
 ```bash
 # Unit tests (fast, no device needed)
-( cd packages/agent_wires_probe && flutter test )    # ~75 tests
-( cd packages/agent_wires_mcp   && dart test    )    # ~46 tests, 3 e2e skipped
+( cd packages/agent_wires_probe && flutter test )    # ~105 tests
+( cd packages/agent_wires_mcp   && dart test    )    # ~128 tests, 3 e2e skipped
 
 # End-to-end (requires a connected device / simulator)
 cd packages/agent_wires_mcp
@@ -191,10 +193,14 @@ Each takes ~90 s end-to-end (mostly the Xcode build).
 
 ## Status & roadmap
 
-`0.1.0` — first published release. Verified end-to-end on a real
-production app (auth + multi-tab navigation + DNS settings + invoice
-list, ~9 screens). Tool surface and JSON shapes are stable from this
-release.
+`agent_wires_mcp 0.1.3` / `agent_wires_probe 0.1.5` — current release.
+First verified end-to-end on a real production app (auth + multi-tab
+navigation + DNS settings + invoice list, ~9 screens) at 0.1.0; the tool
+surface and JSON shapes have been stable since. Recent releases harden the
+long-running-session path surfaced by real agent driving: fail-fast on a
+dropped VM-service connection, full flutter process-tree reaping on stop,
+resume of `--start-stopped` launches, a hot-reload DevFS retry, probe/server
+version-skew warnings, and reliable screenshots during text editing.
 
 Stretch items the original design defers:
 

@@ -21,7 +21,7 @@ from outside and exposes those as tools an agent can call.
 ```yaml
 # pubspec.yaml of the Flutter app you want to drive
 dev_dependencies:
-  agent_wires_probe: ^0.1.0
+  agent_wires_probe: ^0.1.5
 ```
 
 ```bash

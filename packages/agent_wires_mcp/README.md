@@ -43,13 +43,17 @@ Configure your MCP client to spawn `agent_wires_mcp run` against your app.
       "command": "agent_wires_mcp",
       "args": [
         "run",
-        "--project", "/Users/you/your-flutter-app",
-        "-d",        "<device-id from `flutter devices`>"
+        "--project", "/Users/you/your-flutter-app"
       ]
     }
   }
 }
 ```
+
+Leave the device out of the registration (see
+[why](#why-this-server-uses-a-stateful-lifecycle-instead-of-pinning-at-registration)
+below) — the agent picks one at session time via `list_devices` +
+`boot_app(device_id: ...)`.
 
 **Claude Desktop / Cursor / others** — same shape, point at the same
 binary; consult your client's MCP config docs for the file location.
@@ -76,7 +80,7 @@ agent_wires_mcp review  open the human-curation dashboard
 | `-t, --target <path>` | entry-point Dart file |
 | `--dart-define KEY=VALUE` | repeatable, forwarded to `flutter run` |
 
-## Tool surface (23 tools)
+## Tool surface (24 tools)
 
 | Category | Tools |
 |---|---|
