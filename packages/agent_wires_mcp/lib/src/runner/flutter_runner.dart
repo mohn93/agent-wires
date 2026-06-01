@@ -19,12 +19,17 @@ class FlutterRunner {
     this.flutterArgs = const <String>[],
     this.mode = FlutterRunMode.run,
     this.onProgress,
+    this.executable = 'flutter',
   });
 
   final String workingDirectory;
   final String? deviceId;
   final List<String> flutterArgs;
   final FlutterRunMode mode;
+
+  /// The command to spawn. Always `flutter` in production; a test seam so the
+  /// boot path can be exercised against a process that exits deterministically.
+  final String executable;
 
   /// Called when `flutter run --machine` emits an `app.progress` event or a
   /// `daemon.logMessage` worth surfacing (Xcode build steps, Pod install,
@@ -36,6 +41,7 @@ class FlutterRunner {
   Uri? _vmServiceUri;
   String? _appId;
   String? _latestProgress;
+  final StringBuffer _stderrTail = StringBuffer();
   int _nextRequestId = 1;
   final Map<int, Completer<Map<String, dynamic>>> _pendingResponses = {};
 
@@ -68,7 +74,7 @@ class FlutterRunner {
       if (deviceId != null) ...['-d', deviceId!],
     ];
     final proc = await Process.start(
-      'flutter',
+      executable,
       args,
       workingDirectory: workingDirectory,
     );
@@ -79,14 +85,52 @@ class FlutterRunner {
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) => _onStdoutLine(line, vmReady));
-    // Surface flutter's stderr so the caller can debug build failures.
-    proc.stderr.transform(utf8.decoder).listen(stderr.write);
+    // Surface flutter's stderr so the caller can debug build failures, and
+    // keep a tail of it to attach to a premature-exit error below.
+    proc.stderr.transform(utf8.decoder).listen((chunk) {
+      stderr.write(chunk);
+      _appendStderrTail(chunk);
+    });
+
+    // Fail fast if flutter exits before reporting a VM service URI. Without
+    // this, a `flutter run` that dies during the build (codesign failure, no
+    // matching device, or `flutter` resolving to the wrong SDK — e.g. an
+    // fvm-managed Flutter not on the spawned PATH) leaves the boot hanging on
+    // the full timeout while app_status shows a frozen "Running Xcode
+    // build..." and no flutter/xcodebuild process is even alive.
+    unawaited(proc.exitCode.then((code) {
+      if (vmReady.isCompleted) return;
+      final tail = _stderrTail.toString().trim();
+      vmReady.completeError(StateError(
+        'flutter exited (code $code) before reporting a VM service URI — the '
+        'boot failed rather than completing. '
+        '${_latestProgress != null ? 'Last progress: "$_latestProgress". ' : ''}'
+        'Common causes: a build/codesign failure, no matching device, or '
+        '`flutter` resolving to the wrong SDK (e.g. an fvm-managed Flutter not '
+        "on the MCP server's PATH — try an absolute path or `fvm dart pub "
+        'global run`).'
+        '${tail.isNotEmpty ? '\n--- flutter stderr (tail) ---\n$tail' : ''}',
+      ));
+    }));
 
     try {
       _vmServiceUri = await vmReady.future.timeout(timeout);
     } on TimeoutException {
       await stop();
       rethrow;
+    }
+  }
+
+  /// Keeps a bounded tail of flutter's stderr so a premature-exit error can
+  /// quote the actual failure instead of leaving the agent blind.
+  void _appendStderrTail(String chunk) {
+    _stderrTail.write(chunk);
+    const cap = 4000;
+    if (_stderrTail.length > cap) {
+      final s = _stderrTail.toString();
+      _stderrTail
+        ..clear()
+        ..write(s.substring(s.length - cap));
     }
   }
 

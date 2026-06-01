@@ -1,4 +1,4 @@
-const String packageVersion = '0.1.4';
+const String packageVersion = '0.1.5';
 
 /// The agent_wires_probe version this MCP build is designed to pair with. The
 /// probe reports its own version over `ext.qa.ping`; `app_status` warns when
