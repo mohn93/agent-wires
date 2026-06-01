@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.1.5
+
+Screenshot reliability + version reporting from a real LLM-agent driving
+session. No breaking API changes; `AgentWiresProbe.install()` is unchanged.
+
+### screenshot — capture during repaint and before first frame
+
+- **Captures while a `TextField` is focused.** `RenderRepaintBoundary.toImage`
+  asserts `!debugNeedsPaint` in debug builds, so a focused text field — whose
+  blinking cursor repaints every frame — kept the root boundary perpetually
+  dirty and `screenshot` always failed mid-edit
+  (`'!debugNeedsPaint': is not true`). Capture is now optimistic with a
+  settle-and-retry: on failure it commits a frame (which also defeats stale
+  captures) and retries across the windows between cursor blinks where the
+  boundary is clean.
+- **Pre-first-frame no longer hangs.** The "no frame yet" path previously
+  awaited `endOfFrame` unbounded, which could block the call indefinitely when
+  no frame is being produced. The frame wait is now bounded (a live app lands
+  one in ~16ms; the timeout is only a safety net), and the
+  `no RepaintBoundary found` error explains the cause and points at
+  `wait_for_idle`.
+
+### ping — reports the probe version
+
+- `ext.qa.ping` now returns `{"ok": true, "probe_version": "0.1.5"}`. The MCP
+  server reads this to warn on probe/server version skew, since protocol drift
+  between the two has been observed to cause odd hangs. `probeVersion` is
+  exported from the package and pinned to the pubspec version.
+
+## 0.1.4
+
+Perception-accuracy fixes from real LLM-agent driving sessions. No API
+changes; `AgentWiresProbe.install()` is unchanged.
+
+### Snapshot — only report what the user can actually see and touch
+
+- **Transparent text-editing overlays no longer drop the page.** When a
+  text field is focused, Flutter inserts text-editing / selection /
+  autocomplete overlay entries wrapped by `InheritedTheme.captureAll`
+  (`_CaptureAll`). They fill the viewport geometrically but paint
+  nothing, so the containment cover test treated them as a covering page
+  and occluded the real route beneath — every text-field screen
+  (`DomainRegisterRoute`, etc.) came back with an empty snapshot. The
+  cover test now ignores transient overlays (a `_CaptureAll` with no
+  `_ModalScope`/`ModalBarrier` in its subtree); only opaque routes and
+  modal barriers occlude.
+- **Pointer-blocked elements are filtered ("phantom FAB").** An
+  expandable FAB keeps its collapsed sub-items mounted and laid out but
+  wraps them in `IgnorePointer`/`AbsorbPointer`, so a tap can't reach
+  them. Elements under an `ignoring`/`absorbing` wrapper are no longer
+  surfaced as actionable. Opacity is deliberately *not* used as the
+  signal — a transparent widget still receives taps in Flutter, so
+  hiding by opacity would diverge from real tap behaviour.
+
 ## 0.1.3
 
 Post-launch iteration driven by real LLM-agent driving sessions. No

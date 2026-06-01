@@ -1,5 +1,93 @@
 # Changelog
 
+## 0.1.3
+
+Connection- and lifecycle-hardening from a real LLM-agent driving session
+(physical iPhone, then simulator) where a dropped VM-service connection
+cascaded into multi-minute hangs and leaked processes. No tool additions;
+`app_status` gains `probe_version` / `probe_version_warning` / `paused_at_start`
+fields, and `hot_reload` / `hot_restart` failures gain `recoverable` + `hint`.
+
+### Fail-fast instead of hanging on a dead connection
+
+- **Per-call timeout + connection-lost latch.** When the device VM-service
+  connection dropped (`Service connection disposed`, JSON-RPC `-32603`), every
+  `ext.qa.*` call used to block on the dead socket until cancelled — `boot_app`
+  ran 601s, `get_logs` 633s, even `stop_app` 219s. `VmClient` now bounds each
+  call and latches a lost-connection state the instant the socket closes, a
+  call returns `disposed`, or a call times out; subsequent calls and
+  `isProbeAlive` fail immediately with a clear "reattach or reboot" error. A
+  dead connection is distinguished from a stale isolate, so it no longer
+  triggers a rebind that would re-hang.
+- **Teardown never blocks on the VM-service.** `stop_app` bounds VM-service
+  disposal so it always tears down the OS process, even when the connection is
+  already dead.
+
+### Reap the whole flutter process tree
+
+- **No more orphaned `flutter run` / DDS / devicectl / iproxy.** `stop_app`
+  (and server exit on SIGINT/SIGTERM) now snapshots the descendant process
+  tree before killing flutter — children reparent to launchd the moment
+  flutter dies — then SIGTERM→SIGKILL the lot. Stops the per-cycle leak that
+  left multiple servers/runs contending for the same device and VM-service.
+
+### Resume a paused-at-start launch
+
+- **Frozen `--start-stopped` apps now run.** A physical iPhone launched via
+  `devicectl … --start-stopped` boots with `main()` paused; nothing resumed it,
+  so the app sat frozen while `app_status` read `ready`. Attach now resumes any
+  paused-at-start isolate **before** locating the QA isolate (a paused isolate
+  hasn't registered the probe yet). When a resume can't be confirmed,
+  `app_status` reports `paused_at_start: true` instead of a misleading
+  healthy status.
+
+### Hot reload/restart — recover from DevFS wedges
+
+- **Retry-then-explain on `DevFS synchronization failed`.** `hot_reload` /
+  `hot_restart` retry once (the failure is often transient); if it still
+  fails, the result carries `recoverable: false` and a `hint` to run
+  `stop_app` + `boot_app`, instead of a bare `success: false`.
+
+### Smaller robustness wins
+
+- **`boot_app(device_id)` switches devices without a deadlock.** A device
+  switch on a running session force-stops it (process-level) instead of
+  rejecting with "call stop_app first" — which used to deadlock when the
+  VM-service was already dead.
+- **Probe/server version-skew warning.** The probe reports its version over
+  `ext.qa.ping`; `app_status` surfaces `probe_version` and warns when it
+  differs from the version this server pairs with (`0.1.5`).
+- **`get_logs` can't blow the client token budget.** Oversized
+  `message` / `error` / `stack` fields are truncated (default 4000 chars each,
+  with a dropped-char marker) so a single ~110k-char Flutter stack no longer
+  overruns the MCP client limit. Pagination is preserved.
+
+## 0.1.2
+
+Hot-restart robustness from real LLM-agent driving sessions. No tool
+additions; `app_status` gains a `probe_attached` field.
+
+### Self-healing isolate binding
+
+- **Recovers from hot restart automatically.** A hot restart collects
+  the QA isolate and starts a new one. The client used to keep calling
+  the dead isolate id, so every `ext.qa.*` call failed with
+  `[Sentinel kind: Collected]` for the rest of the session and never
+  recovered. `callExtension` now re-resolves the live `ext.qa.*` isolate
+  and retries once on a stale-isolate error, so a single tool call
+  recovers transparently.
+- **`app_status` reports `probe_attached`.** Distinct from `state`,
+  which only tracks the `flutter run` process: after a hot restart the
+  process stays up (`state` stays `ready`) but the probe moves to a
+  fresh isolate. `state:"ready"` with `probe_attached:false` now tells
+  the agent the probe is reattaching, instead of looking healthy while
+  every call fails. The check re-resolves and rebinds when the bound
+  isolate has been collected.
+- **Clearer error when the probe is truly gone.** If re-resolution
+  fails (the app exited, or hot-restarted without
+  `AgentWiresProbe.install()`), the agent gets an actionable message
+  instead of the raw VM-service sentinel string.
+
 ## 0.1.1
 
 Post-0.1.0 iteration driven by real LLM-agent driving sessions. **Tool

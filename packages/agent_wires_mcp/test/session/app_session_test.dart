@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
@@ -22,6 +24,18 @@ void main() {
       final session = AppSession.attached(_FakeVm());
       await session.dispose();
       expect(() => session.ensureReady(), throwsStateError);
+    });
+
+    test('dispose does not block on a hung VmClient.dispose (#1)', () async {
+      // stop_app must tear the session down even when the VM-service is dead —
+      // a hung _service.dispose() must not wedge teardown for minutes.
+      final session = AppSession.attached(_HangingDisposeVm());
+      final sw = Stopwatch()..start();
+      await session.dispose();
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(3000),
+          reason: 'teardown must not await a dead VM-service connection');
+      expect(session.state, AppState.exited);
     });
   });
 
@@ -65,6 +79,36 @@ void main() {
     });
   });
 
+  group('AppSession.isProbeAlive', () {
+    test('false when the session has never become ready', () async {
+      final session = AppSession.lazy(workingDirectory: '/tmp');
+      expect(await session.isProbeAlive(), isFalse);
+    });
+
+    test('false after dispose', () async {
+      final session = AppSession.attached(_AliveVm());
+      await session.dispose();
+      expect(await session.isProbeAlive(), isFalse);
+    });
+
+    test('delegates to the VmClient when ready', () async {
+      final session = AppSession.attached(_AliveVm());
+      expect(await session.isProbeAlive(), isTrue);
+    });
+  });
+
+  group('AppSession.isPausedAtStart (#3)', () {
+    test('false when the session is not ready', () async {
+      final session = AppSession.lazy(workingDirectory: '/tmp');
+      expect(await session.isPausedAtStart(), isFalse);
+    });
+
+    test('delegates to the VmClient when ready', () async {
+      final session = AppSession.attached(_PausedAtStartVm());
+      expect(await session.isPausedAtStart(), isTrue);
+    });
+  });
+
   group('AppSession exited recovery', () {
     test('attached session stays terminal once exited', () async {
       final session = AppSession.attached(_FakeVm());
@@ -104,4 +148,28 @@ void main() {
 
 class _FakeVm extends VmClient {
   _FakeVm() : super.test();
+}
+
+class _AliveVm extends VmClient {
+  _AliveVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => true;
+}
+
+/// dispose() never completes — models a VM-service teardown stuck on a dead
+/// socket. AppSession.dispose must bound it so stop_app still returns.
+class _HangingDisposeVm extends VmClient {
+  _HangingDisposeVm() : super.test();
+
+  @override
+  Future<void> dispose() => Completer<void>().future;
+}
+
+/// Reports an isolate still paused at start (frozen --start-stopped launch).
+class _PausedAtStartVm extends VmClient {
+  _PausedAtStartVm() : super.test();
+
+  @override
+  Future<bool> isPausedAtStart() async => true;
 }

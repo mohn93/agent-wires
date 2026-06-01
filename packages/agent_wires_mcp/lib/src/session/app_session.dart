@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:meta/meta.dart';
+
 import '../runner/flutter_runner.dart';
 import '../vm/client.dart';
 
@@ -80,6 +82,64 @@ class AppSession {
       );
     }
     _deviceId = deviceId;
+  }
+
+  /// Whether the QA probe is actually reachable right now — distinct from
+  /// [state], which only tracks the `flutter run` process. After a hot
+  /// restart the process stays up (`state == ready`) but the probe lives in a
+  /// fresh isolate; this asks the [VmClient], which re-resolves and rebinds if
+  /// the previously-bound isolate was collected. `app_status` surfaces this so
+  /// the agent can tell "process alive but probe gone" from "all good".
+  Future<bool> isProbeAlive() async {
+    if (_state != AppState.ready || _vm == null) return false;
+    return _vm!.isProbeAlive();
+  }
+
+  /// The version reported by the attached probe, or null when not ready / not
+  /// reachable. Surfaced by `app_status` for version-skew warnings (#6).
+  Future<String?> probeVersion() async {
+    if (_state != AppState.ready || _vm == null) return null;
+    return _vm!.probeVersion();
+  }
+
+  /// Whether the app is frozen because an isolate is still paused at start
+  /// (the `devicectl --start-stopped` symptom). Surfaced by `app_status` so a
+  /// frozen launch is reported instead of a misleading "ready" (#3).
+  Future<bool> isPausedAtStart() async {
+    if (_state != AppState.ready || _vm == null) return false;
+    return _vm!.isPausedAtStart();
+  }
+
+  /// Whether a `boot_app(device_id)` should force-stop the current session
+  /// before retargeting. Only a *running lazy* session bound to a *different*
+  /// device needs it — attached sessions can't switch device, and an idle /
+  /// already-on-this-device session has nothing to tear down. Pure + testable.
+  @visibleForTesting
+  static bool shouldForceStopForDevice({
+    required bool attached,
+    required AppState state,
+    required String? currentDevice,
+    required String requestedDevice,
+  }) =>
+      !attached &&
+      state == AppState.ready &&
+      currentDevice != requestedDevice;
+
+  /// Pins [deviceId] for the next boot, force-stopping first when the app is
+  /// already running on a different device. This lets `boot_app(device_id)`
+  /// switch devices on its own instead of requiring the agent to call
+  /// `stop_app` — which used to deadlock when the VM-service was already dead
+  /// (the #1/#6 deadlock). `dispose` is bounded, so the stop can't wedge.
+  Future<void> prepareDevice(String deviceId) async {
+    if (shouldForceStopForDevice(
+      attached: _attached,
+      state: _state,
+      currentDevice: _deviceId,
+      requestedDevice: deviceId,
+    )) {
+      await dispose();
+    }
+    selectDevice(deviceId);
   }
 
   /// Returns the connected [VmClient]. If the session is lazy and hasn't been
@@ -223,8 +283,11 @@ class AppSession {
   }
 
   Future<void> dispose() async {
+    // The VM-service may already be dead — `_service.dispose()` can hang on a
+    // half-open socket. Bound it so stop_app always tears down the OS process
+    // (the real recovery) instead of wedging on a corpse connection (#1).
     try {
-      await _vm?.dispose();
+      await _vm?.dispose().timeout(const Duration(seconds: 2));
     } catch (_) {}
     try {
       await _runner?.stop();

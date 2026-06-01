@@ -14,20 +14,24 @@ class ScreenshotExtension {
   ) async {
     try {
       // First-call race: the agent may screenshot before the first frame has
-      // rasterized (no rootElement yet, or no RepaintBoundary yet). Wait one
-      // end-of-frame and retry once before failing.
+      // rasterized (no rootElement yet, or no RepaintBoundary yet). Settle one
+      // frame and look again before giving up.
       var boundary = _findRootRepaintBoundary();
       if (boundary == null) {
-        await WidgetsBinding.instance.endOfFrame;
+        await _settleFrame();
         boundary = _findRootRepaintBoundary();
       }
       if (boundary == null) {
         return developer.ServiceExtensionResponse.error(
           developer.ServiceExtensionResponse.extensionError,
-          jsonEncode({'error': 'no RepaintBoundary found'}),
+          jsonEncode({
+            'error': 'no RepaintBoundary found — no Flutter frame has rendered '
+                'yet (still on the native splash / first paint). Retry after '
+                'the first frame, e.g. after wait_for_idle.',
+          }),
         );
       }
-      final image = await boundary.toImage(pixelRatio: 1.0);
+      final image = await _capture(boundary);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       if (bytes == null) {
         return developer.ServiceExtensionResponse.error(
@@ -47,6 +51,47 @@ class ScreenshotExtension {
         developer.ServiceExtensionResponse.extensionError,
         jsonEncode({'error': e.toString()}),
       );
+    }
+  }
+
+  /// Captures the boundary, retrying across settled frames. `toImage` asserts
+  /// `!debugNeedsPaint` (debug builds): with a focused TextField the blinking
+  /// cursor repaints every frame, so the boundary is perpetually dirty and the
+  /// naive single call always threw — a screenshot was impossible exactly while
+  /// editing. We try optimistically, and on failure settle a frame (which also
+  /// commits the freshest pixels, avoiding a stale capture) and retry, catching
+  /// one of the windows between cursor blinks where the boundary is clean (#4).
+  static Future<ui.Image> _capture(
+    RenderRepaintBoundary boundary, {
+    int attempts = 4,
+  }) async {
+    Object? lastError;
+    for (var i = 0; i < attempts; i++) {
+      try {
+        return await boundary.toImage(pixelRatio: 1.0);
+      } catch (e) {
+        lastError = e;
+        if (i < attempts - 1) {
+          await _settleFrame();
+          boundary = _findRootRepaintBoundary() ?? boundary;
+        }
+      }
+    }
+    throw lastError ?? StateError('screenshot capture failed');
+  }
+
+  /// Schedules a frame and waits for it to commit, so the next capture sees the
+  /// latest painted pixels. Bounded so it can never hang the tool call if no
+  /// frame is being produced (e.g. a wedged engine, or a non-rendering test
+  /// binding) — in a live app a frame lands in ~16ms; the timeout is only a
+  /// safety net.
+  static Future<void> _settleFrame() async {
+    try {
+      WidgetsBinding.instance.scheduleFrame();
+      await WidgetsBinding.instance.endOfFrame
+          .timeout(const Duration(seconds: 1));
+    } catch (_) {
+      // Timed out / no frame driver — proceed with whatever we have.
     }
   }
 

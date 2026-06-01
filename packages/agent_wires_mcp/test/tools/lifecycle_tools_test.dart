@@ -35,6 +35,27 @@ void main() {
         reason: 'app_status must not trigger a boot');
   });
 
+  test('app_status reports probe_attached:false for an idle session', () async {
+    final session = AppSession.lazy(workingDirectory: '/tmp');
+    final tools = lifecycleTools(session);
+    final status = tools.firstWhere((t) => t.name == 'app_status');
+    final payload = _decode(await status.handler({}));
+    expect(payload['probe_attached'], isFalse,
+        reason: 'an un-booted session has no live probe');
+  });
+
+  test('app_status reports probe_attached:true when the probe is alive',
+      () async {
+    // Distinguishes probe liveness from process liveness — the gap that made
+    // a hot-restart desync look like state:ready while every call failed.
+    final session = AppSession.attached(_AliveVm());
+    final tools = lifecycleTools(session);
+    final status = tools.firstWhere((t) => t.name == 'app_status');
+    final payload = _decode(await status.handler({}));
+    expect(payload['state'], 'ready');
+    expect(payload['probe_attached'], isTrue);
+  });
+
   test('stop_app flips an attached session to exited', () async {
     final session = AppSession.attached(_FakeVm());
     final tools = lifecycleTools(session);
@@ -96,6 +117,68 @@ void main() {
     final result = await boot.handler({});
     expect(result['isError'], isTrue);
   });
+
+  group('probe version skew warning (#6)', () {
+    test('warns when the running probe differs from the expected version', () {
+      final w =
+          probeVersionSkewWarning(expected: '0.1.4', actual: '0.1.2');
+      expect(w, isNotNull);
+      expect(w, contains('0.1.2'));
+      expect(w, contains('0.1.4'));
+    });
+
+    test('no warning when versions match', () {
+      expect(probeVersionSkewWarning(expected: '0.1.4', actual: '0.1.4'),
+          isNull);
+    });
+
+    test('no warning when the probe version is unknown (older probe)', () {
+      expect(
+          probeVersionSkewWarning(expected: '0.1.4', actual: null), isNull);
+    });
+
+    test('app_status surfaces probe_version and a skew warning', () async {
+      final session = AppSession.attached(_SkewedProbeVm());
+      final tools = lifecycleTools(session);
+      final status = tools.firstWhere((t) => t.name == 'app_status');
+      final payload = _decode(await status.handler({}));
+      expect(payload['probe_version'], '0.0.1-old');
+      expect(payload['probe_version_warning'], isNotNull);
+      expect(payload['probe_version_warning'], contains('0.0.1-old'));
+    });
+  });
+
+  test('app_status surfaces paused_at_start when the app is frozen (#3)',
+      () async {
+    // Process up, probe unreachable because the isolate never resumed: report
+    // paused_at_start so a --start-stopped freeze isn't read as healthy.
+    final session = AppSession.attached(_FrozenVm());
+    final tools = lifecycleTools(session);
+    final status = tools.firstWhere((t) => t.name == 'app_status');
+    final payload = _decode(await status.handler({}));
+    expect(payload['probe_attached'], isFalse);
+    expect(payload['paused_at_start'], isTrue);
+  });
+
+  group('boot_app force-stop on device change (#6)', () {
+    test('only a running lazy session on a different device is force-stopped',
+        () {
+      bool decide(bool attached, AppState s, String? cur, String req) =>
+          AppSession.shouldForceStopForDevice(
+            attached: attached,
+            state: s,
+            currentDevice: cur,
+            requestedDevice: req,
+          );
+      expect(decide(false, AppState.ready, 'iphone', 'sim'), isTrue);
+      expect(decide(false, AppState.ready, 'iphone', 'iphone'), isFalse,
+          reason: 'same device — no need to restart');
+      expect(decide(false, AppState.idle, null, 'sim'), isFalse,
+          reason: 'nothing running to stop');
+      expect(decide(true, AppState.ready, 'iphone', 'sim'), isFalse,
+          reason: 'attached sessions cannot switch device');
+    });
+  });
 }
 
 class _RecordingVm extends VmClient {
@@ -116,4 +199,33 @@ Map<String, dynamic> _decode(Map<String, dynamic> toolResult) {
 
 class _FakeVm extends VmClient {
   _FakeVm() : super.test();
+}
+
+class _AliveVm extends VmClient {
+  _AliveVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => true;
+}
+
+/// Process up but isolate frozen at start: probe unreachable, paused detected.
+class _FrozenVm extends VmClient {
+  _FrozenVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => false;
+
+  @override
+  Future<bool> isPausedAtStart() async => true;
+}
+
+/// Alive probe reporting a stale version, to exercise the skew warning path.
+class _SkewedProbeVm extends VmClient {
+  _SkewedProbeVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => true;
+
+  @override
+  Future<String?> probeVersion() async => '0.0.1-old';
 }

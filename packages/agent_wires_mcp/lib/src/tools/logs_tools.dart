@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:meta/meta.dart';
+
 import '../mcp/tool.dart';
 import '../session/app_session.dart';
 
@@ -73,10 +75,40 @@ List<Tool> logsTools(AppSession session) => [
           if (limit is num) params['limit'] = limit.toInt().toString();
           final vm = await session.ensureReady();
           final json = await vm.callExtension('ext.qa.get_logs', params);
-          return _result(jsonEncode(json));
+          return _result(jsonEncode(capLogPayload(json)));
         },
       ),
     ];
+
+/// Caps the per-field size of log entries so one pathological entry — the field
+/// report's ~110k-char Flutter stack — can't blow the MCP client's token
+/// budget. Long `message`/`error`/`stack` fields are truncated with a marker
+/// that records how many characters were dropped; pagination cursors and every
+/// other field are preserved. Pure + visible for testing (#6).
+@visibleForTesting
+Map<String, dynamic> capLogPayload(
+  Map<String, dynamic> json, {
+  int maxFieldChars = 4000,
+}) {
+  final entries = json['entries'];
+  if (entries is! List) return json;
+  return {
+    ...json,
+    'entries': entries.map((e) {
+      if (e is! Map) return e;
+      final m = Map<String, dynamic>.from(e);
+      for (final key in const ['message', 'error', 'stack']) {
+        final v = m[key];
+        if (v is String && v.length > maxFieldChars) {
+          final dropped = v.length - maxFieldChars;
+          m[key] = '${v.substring(0, maxFieldChars)}\n'
+              '…[truncated $dropped chars]';
+        }
+      }
+      return m;
+    }).toList(),
+  };
+}
 
 Map<String, dynamic> _result(String text) => {
       'content': [

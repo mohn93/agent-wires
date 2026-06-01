@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
+import 'version.dart';
 import 'extensions/clear_text_ext.dart';
 import 'extensions/enter_text_ext.dart';
 import 'extensions/get_logs_ext.dart';
@@ -44,7 +46,11 @@ class AgentWiresProbe {
     LogCapture.install(_logBuffer);
     GetLogsExtension.bind(_logBuffer);
     _register('ext.qa.ping', (_, __) async {
-      return developer.ServiceExtensionResponse.result('{"ok":true}');
+      // Report the probe version so the MCP server can warn on version skew
+      // with the app it is driving (#6).
+      return developer.ServiceExtensionResponse.result(
+        jsonEncode({'ok': true, 'probe_version': probeVersion}),
+      );
     });
     _register(SnapshotExtension.name, SnapshotExtension.handle);
     _register(InspectExtension.name, InspectExtension.handle);

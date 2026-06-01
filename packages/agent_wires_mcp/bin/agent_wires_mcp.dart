@@ -164,12 +164,20 @@ Future<void> _serveStdio({
     ...logsTools(session),
   ]);
 
-  late StreamSubscription sigint;
-  sigint = ProcessSignal.sigint.watch().listen((_) async {
-    await sigint.cancel();
+  // Reap the flutter process tree on shutdown whether the MCP client sends
+  // SIGINT (Ctrl+C) or SIGTERM (the usual "stop the server" signal). Without
+  // the SIGTERM path, a client shutdown would orphan flutter/DDS/iproxy (#2).
+  final shutdownSignals = <StreamSubscription>[];
+  Future<void> handleShutdown() async {
+    for (final sub in shutdownSignals) {
+      await sub.cancel();
+    }
     await onShutdown();
     exit(0);
-  });
+  }
+
+  shutdownSignals.add(ProcessSignal.sigint.watch().listen((_) => handleShutdown()));
+  shutdownSignals.add(ProcessSignal.sigterm.watch().listen((_) => handleShutdown()));
 
   await for (final msg in transport.incoming) {
     final resp = await protocol.handle(msg);

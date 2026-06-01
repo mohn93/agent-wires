@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:meta/meta.dart';
+
 import '../mcp/tool.dart';
 import '../runner/device_lister.dart';
 import '../session/app_session.dart';
+import '../version.dart';
 
 /// Tools that govern the app lifecycle itself — boot it, query state, stop it.
 ///
@@ -91,7 +94,9 @@ List<Tool> lifecycleTools(AppSession session) => [
           final deviceId = args['device_id'];
           if (deviceId is String && deviceId.isNotEmpty) {
             try {
-              session.selectDevice(deviceId);
+              // Force-stops a session already running on a different device so
+              // a device switch doesn't require a separate stop_app call (#6).
+              await session.prepareDevice(deviceId);
             } catch (e) {
               return _toolError('device selection rejected: $e');
             }
@@ -124,9 +129,38 @@ List<Tool> lifecycleTools(AppSession session) => [
             'When boot_app appears stuck, call app_status to see what step '
             'it is on; a stale latest_progress for several minutes means '
             'the underlying flutter process is hung. Cheap; safe to poll. '
-            'Never starts the app.',
+            'Never starts the app.\n\n'
+            'Also returns `probe_attached` (bool): whether the in-app probe '
+            'is actually reachable, SEPARATE from `state`. After a hot_restart '
+            'the flutter process stays up (state stays "ready") but the probe '
+            'moves to a fresh isolate. state="ready" with '
+            'probe_attached=false means the probe is reattaching — just retry '
+            'your next tool call (snapshot/tap auto-recover).',
         inputSchema: {'type': 'object', 'properties': {}},
-        handler: (_) async => _toolResult(jsonEncode(_statusPayload(session))),
+        handler: (_) async {
+          final payload = _statusPayload(session);
+          final alive = await session.isProbeAlive();
+          payload['probe_attached'] = alive;
+          // When the probe is reachable, report its version and warn if it
+          // differs from the version this server pairs with (#6).
+          if (alive) {
+            final pv = await session.probeVersion();
+            if (pv != null) payload['probe_version'] = pv;
+            final warning = probeVersionSkewWarning(
+              expected: recommendedProbeVersion,
+              actual: pv,
+            );
+            if (warning != null) payload['probe_version_warning'] = warning;
+          } else if (session.state == AppState.ready) {
+            // Process up but probe unreachable — is an isolate stuck paused at
+            // start (a --start-stopped launch that never resumed)? Surface it
+            // so the agent doesn't read a frozen app as healthy (#3).
+            if (await session.isPausedAtStart()) {
+              payload['paused_at_start'] = true;
+            }
+          }
+          return _toolResult(jsonEncode(payload));
+        },
       ),
       Tool(
         name: 'stop_app',
@@ -194,6 +228,23 @@ List<Tool> lifecycleTools(AppSession session) => [
         },
       ),
     ];
+
+/// Returns a human-readable warning when the running app's probe version
+/// differs from the version this MCP server is built to pair with, else null.
+/// Unknown ([actual] == null, i.e. an older probe that doesn't report a
+/// version) is treated as "can't tell" — no warning. Pure + visible for
+/// testing (#6).
+@visibleForTesting
+String? probeVersionSkewWarning({
+  required String expected,
+  required String? actual,
+}) {
+  if (actual == null || actual == expected) return null;
+  return 'probe/server version skew: the app is running agent_wires_probe '
+      '$actual but this agent_wires_mcp pairs with $expected. Protocol drift '
+      'between the two can cause odd hangs — rebuild the app against probe '
+      '$expected (or update the server).';
+}
 
 Future<void> _fireAndForgetBoot(AppSession session) async {
   try {
