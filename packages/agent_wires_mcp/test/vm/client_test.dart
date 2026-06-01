@@ -140,6 +140,36 @@ void main() {
     });
   });
 
+  group('resume paused-at-start isolate (#3)', () {
+    test('resumePausedIsolates resumes every isolate paused at start',
+        () async {
+      final vm = _PausedVm(['isolates/1', 'isolates/2']);
+      await vm.resumePausedIsolates();
+      expect(vm.resumed, ['isolates/1', 'isolates/2'],
+          reason: 'a frozen --start-stopped launch must be resumed');
+    });
+
+    test('resumePausedIsolates is a no-op when nothing is paused', () async {
+      final vm = _PausedVm(const []);
+      await vm.resumePausedIsolates();
+      expect(vm.resumed, isEmpty);
+    });
+
+    test('resumePausedIsolates swallows a walk failure (never throws)',
+        () async {
+      // A dead/odd connection while enumerating isolates must not break attach.
+      final vm = _ThrowingPausedVm();
+      await vm.resumePausedIsolates(); // must not throw
+      expect(vm.resumed, isEmpty);
+    });
+
+    test('isPausedAtStart reflects whether any isolate stayed paused',
+        () async {
+      expect(await _PausedVm(['isolates/1']).isPausedAtStart(), isTrue);
+      expect(await _PausedVm(const []).isPausedAtStart(), isFalse);
+    });
+  });
+
   group('isProbeAlive', () {
     test('returns false when no isolate has ever been bound', () async {
       expect(await VmClient.test().isProbeAlive(), isFalse);
@@ -242,6 +272,39 @@ class _HangingVm extends VmClient {
     rawCalls++;
     return Completer<Map<String, dynamic>>().future; // never completes
   }
+}
+
+/// Reports a fixed set of paused-at-start isolates and records resumes. As
+/// each is resumed it drops out of the paused set, mirroring a real resume.
+class _PausedVm extends VmClient {
+  _PausedVm(List<String> paused)
+      : _paused = [...paused],
+        super.test();
+  List<String> _paused;
+  final resumed = <String>[];
+
+  @override
+  Future<List<String>> pausedAtStartIsolates() async => List.of(_paused);
+
+  @override
+  Future<void> resumeIsolate(String id) async {
+    resumed.add(id);
+    _paused = _paused.where((p) => p != id).toList();
+  }
+}
+
+/// Enumeration of paused isolates blows up — resumePausedIsolates must absorb
+/// it so a flaky attach doesn't fail outright.
+class _ThrowingPausedVm extends VmClient {
+  _ThrowingPausedVm() : super.test();
+  final resumed = <String>[];
+
+  @override
+  Future<List<String>> pausedAtStartIsolates() async =>
+      throw StateError('VM walk failed');
+
+  @override
+  Future<void> resumeIsolate(String id) async => resumed.add(id);
 }
 
 /// Returns a ping payload carrying (or omitting) a probe_version field.

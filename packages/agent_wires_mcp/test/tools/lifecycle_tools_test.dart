@@ -148,6 +148,18 @@ void main() {
     });
   });
 
+  test('app_status surfaces paused_at_start when the app is frozen (#3)',
+      () async {
+    // Process up, probe unreachable because the isolate never resumed: report
+    // paused_at_start so a --start-stopped freeze isn't read as healthy.
+    final session = AppSession.attached(_FrozenVm());
+    final tools = lifecycleTools(session);
+    final status = tools.firstWhere((t) => t.name == 'app_status');
+    final payload = _decode(await status.handler({}));
+    expect(payload['probe_attached'], isFalse);
+    expect(payload['paused_at_start'], isTrue);
+  });
+
   group('boot_app force-stop on device change (#6)', () {
     test('only a running lazy session on a different device is force-stopped',
         () {
@@ -194,6 +206,17 @@ class _AliveVm extends VmClient {
 
   @override
   Future<bool> isProbeAlive() async => true;
+}
+
+/// Process up but isolate frozen at start: probe unreachable, paused detected.
+class _FrozenVm extends VmClient {
+  _FrozenVm() : super.test();
+
+  @override
+  Future<bool> isProbeAlive() async => false;
+
+  @override
+  Future<bool> isPausedAtStart() async => true;
 }
 
 /// Alive probe reporting a stale version, to exercise the skew warning path.

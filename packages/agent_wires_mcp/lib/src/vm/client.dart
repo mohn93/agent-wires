@@ -69,8 +69,15 @@ class VmClient {
   static Future<VmClient> connect(Uri uri) async {
     final wsUri = _toWebSocketUri(uri);
     final service = await vmServiceConnectUri(wsUri.toString());
-    final isolateId = await _findQaIsolate(service);
-    return VmClient._(service, isolateId);
+    // Bind with no isolate yet, resume anything paused at start, THEN locate
+    // the QA isolate. Order matters: an isolate paused at start (a physical
+    // iPhone launched via `devicectl --start-stopped`) hasn't run main() yet,
+    // so the probe isn't registered and _findQaIsolate would time out — and
+    // the app would sit frozen on screen while status read "ready" (#3).
+    final client = VmClient._(service, '');
+    await client.resumePausedIsolates();
+    client._isolateId = await _findQaIsolate(service);
+    return client;
   }
 
   /// Walks every isolate looking for one that has registered an `ext.qa.*`
@@ -233,6 +240,63 @@ class VmClient {
       return v is String ? v : null;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Ids of every isolate currently paused at start. Bounded by [callTimeout]
+  /// so a dead socket can't make this hang. Seam for tests.
+  @visibleForTesting
+  Future<List<String>> pausedAtStartIsolates() async {
+    final vm = await _service.getVM().timeout(callTimeout);
+    final ids = <String>[];
+    for (final ref in vm.isolates ?? const <IsolateRef>[]) {
+      final id = ref.id;
+      if (id == null) continue;
+      try {
+        final iso = await _service.getIsolate(id).timeout(callTimeout);
+        if (iso.pauseEvent?.kind == EventKind.kPauseStart) ids.add(id);
+      } catch (_) {
+        // Skip isolates that fail to load (race with isolate exit).
+      }
+    }
+    return ids;
+  }
+
+  /// Resumes a single isolate by id. Seam for tests.
+  @visibleForTesting
+  Future<void> resumeIsolate(String id) => _service.resume(id);
+
+  /// Resumes any isolate paused at start so the app actually runs instead of
+  /// sitting frozen — the `devicectl --start-stopped` symptom where the app
+  /// looks broken while status reports ready (#3). Best-effort and bounded; a
+  /// failure here must never block attach.
+  Future<void> resumePausedIsolates() async {
+    if (_connectionLost) return;
+    List<String> paused;
+    try {
+      paused = await pausedAtStartIsolates();
+    } catch (_) {
+      return;
+    }
+    for (final id in paused) {
+      try {
+        await resumeIsolate(id).timeout(callTimeout);
+      } catch (_) {
+        // A resume that fails leaves the isolate paused; app_status surfaces
+        // that via isPausedAtStart so the agent isn't left guessing.
+      }
+    }
+  }
+
+  /// True when any isolate is still paused at start — i.e. a resume could not
+  /// be confirmed and the app is likely frozen. Surfaced by `app_status` so a
+  /// paused launch is reported instead of a misleading "ready" (#3).
+  Future<bool> isPausedAtStart() async {
+    if (_connectionLost) return false;
+    try {
+      return (await pausedAtStartIsolates()).isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 

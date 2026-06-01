@@ -151,6 +151,13 @@ List<Tool> lifecycleTools(AppSession session) => [
               actual: pv,
             );
             if (warning != null) payload['probe_version_warning'] = warning;
+          } else if (session.state == AppState.ready) {
+            // Process up but probe unreachable — is an isolate stuck paused at
+            // start (a --start-stopped launch that never resumed)? Surface it
+            // so the agent doesn't read a frozen app as healthy (#3).
+            if (await session.isPausedAtStart()) {
+              payload['paused_at_start'] = true;
+            }
           }
           return _toolResult(jsonEncode(payload));
         },

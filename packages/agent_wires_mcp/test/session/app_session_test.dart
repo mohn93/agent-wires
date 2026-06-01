@@ -97,6 +97,18 @@ void main() {
     });
   });
 
+  group('AppSession.isPausedAtStart (#3)', () {
+    test('false when the session is not ready', () async {
+      final session = AppSession.lazy(workingDirectory: '/tmp');
+      expect(await session.isPausedAtStart(), isFalse);
+    });
+
+    test('delegates to the VmClient when ready', () async {
+      final session = AppSession.attached(_PausedAtStartVm());
+      expect(await session.isPausedAtStart(), isTrue);
+    });
+  });
+
   group('AppSession exited recovery', () {
     test('attached session stays terminal once exited', () async {
       final session = AppSession.attached(_FakeVm());
@@ -152,4 +164,12 @@ class _HangingDisposeVm extends VmClient {
 
   @override
   Future<void> dispose() => Completer<void>().future;
+}
+
+/// Reports an isolate still paused at start (frozen --start-stopped launch).
+class _PausedAtStartVm extends VmClient {
+  _PausedAtStartVm() : super.test();
+
+  @override
+  Future<bool> isPausedAtStart() async => true;
 }

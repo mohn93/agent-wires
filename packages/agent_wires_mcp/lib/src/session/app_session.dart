@@ -102,6 +102,14 @@ class AppSession {
     return _vm!.probeVersion();
   }
 
+  /// Whether the app is frozen because an isolate is still paused at start
+  /// (the `devicectl --start-stopped` symptom). Surfaced by `app_status` so a
+  /// frozen launch is reported instead of a misleading "ready" (#3).
+  Future<bool> isPausedAtStart() async {
+    if (_state != AppState.ready || _vm == null) return false;
+    return _vm!.isPausedAtStart();
+  }
+
   /// Whether a `boot_app(device_id)` should force-stop the current session
   /// before retargeting. Only a *running lazy* session bound to a *different*
   /// device needs it — attached sessions can't switch device, and an idle /
