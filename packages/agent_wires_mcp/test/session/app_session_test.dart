@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
@@ -22,6 +24,18 @@ void main() {
       final session = AppSession.attached(_FakeVm());
       await session.dispose();
       expect(() => session.ensureReady(), throwsStateError);
+    });
+
+    test('dispose does not block on a hung VmClient.dispose (#1)', () async {
+      // stop_app must tear the session down even when the VM-service is dead —
+      // a hung _service.dispose() must not wedge teardown for minutes.
+      final session = AppSession.attached(_HangingDisposeVm());
+      final sw = Stopwatch()..start();
+      await session.dispose();
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(3000),
+          reason: 'teardown must not await a dead VM-service connection');
+      expect(session.state, AppState.exited);
     });
   });
 
@@ -129,4 +143,13 @@ class _AliveVm extends VmClient {
 
   @override
   Future<bool> isProbeAlive() async => true;
+}
+
+/// dispose() never completes — models a VM-service teardown stuck on a dead
+/// socket. AppSession.dispose must bound it so stop_app still returns.
+class _HangingDisposeVm extends VmClient {
+  _HangingDisposeVm() : super.test();
+
+  @override
+  Future<void> dispose() => Completer<void>().future;
 }

@@ -234,8 +234,11 @@ class AppSession {
   }
 
   Future<void> dispose() async {
+    // The VM-service may already be dead — `_service.dispose()` can hang on a
+    // half-open socket. Bound it so stop_app always tears down the OS process
+    // (the real recovery) instead of wedging on a corpse connection (#1).
     try {
-      await _vm?.dispose();
+      await _vm?.dispose().timeout(const Duration(seconds: 2));
     } catch (_) {}
     try {
       await _runner?.stop();

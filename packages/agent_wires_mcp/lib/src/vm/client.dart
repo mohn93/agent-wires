@@ -4,8 +4,23 @@ import 'package:meta/meta.dart';
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 
+/// Thrown when the VM-service connection itself is gone — disposed, closed, or
+/// hung past [VmClient.callTimeout] on a dead/half-open socket. Distinct from a
+/// stale-isolate error (recoverable via rebind): the whole connection is dead,
+/// so the only recovery is to reattach or reboot (`boot_app`). Surfacing this
+/// fast is what stops a lost connection from wedging every subsequent tool
+/// call for minutes.
+class VmConnectionLostException implements Exception {
+  VmConnectionLostException(this.message);
+  final String message;
+  @override
+  String toString() => 'VmConnectionLostException: $message';
+}
+
 class VmClient {
-  VmClient._(this._service, this._isolateId);
+  VmClient._(this._service, this._isolateId) {
+    _wireConnectionState();
+  }
 
   /// Named constructor for test subclasses. Initialises fields with no-op
   /// values; subclasses should override the [rawCallExtension] /
@@ -23,6 +38,33 @@ class VmClient {
 
   /// The currently-bound QA isolate id. Exposed for diagnostics/tests.
   String get isolateId => _isolateId;
+
+  // Latched once the underlying connection is known to be dead (the socket
+  // closed, a call came back "disposed", or a call hung past [callTimeout]).
+  // Once set, every call fails fast instead of awaiting a corpse.
+  bool _connectionLost = false;
+
+  /// True when the VM-service connection is known to be gone. After this flips,
+  /// calls fail immediately with [VmConnectionLostException] — recovery means a
+  /// fresh attach (`boot_app`), not a retry against the dead socket.
+  bool get isConnectionLost => _connectionLost;
+
+  /// Upper bound on a single VM-service call. A half-open socket can leave the
+  /// RPC future pending forever; without this the session wedges for minutes.
+  /// Generous enough for a heavy snapshot, short enough to recover quickly.
+  /// Overridable as a test seam.
+  @visibleForTesting
+  Duration get callTimeout => const Duration(seconds: 30);
+
+  // Listens for the connection closing so a cleanly-dropped socket latches
+  // [_connectionLost] the instant it dies, rather than on the next timeout.
+  // Only wired for real connections (the [VmClient._] path) — the `.test()`
+  // constructor's empty stream would otherwise complete onDone immediately.
+  void _wireConnectionState() {
+    _service.onDone.then((_) {
+      _connectionLost = true;
+    }).catchError((_) {});
+  }
 
   static Future<VmClient> connect(Uri uri) async {
     final wsUri = _toWebSocketUri(uri);
@@ -73,15 +115,27 @@ class VmClient {
     String name, [
     Map<String, dynamic>? args,
   ]) async {
+    // Already-dead connection: don't even touch the socket — fail instantly.
+    if (_connectionLost) throw _connectionLostError(name);
     final stringArgs = <String, String>{};
     args?.forEach((k, v) => stringArgs[k] = v is String ? v : jsonEncode(v));
     try {
-      return await rawCallExtension(name, stringArgs);
+      return await _timedRawCall(name, stringArgs);
     } catch (e) {
+      // A dead connection is NOT a stale isolate: rebinding re-resolves over
+      // the same dead socket and would hang again. Latch and fail fast.
+      if (_isConnectionLostError(e)) {
+        _connectionLost = true;
+        throw _connectionLostError(name);
+      }
       if (!_isStaleIsolateError(e)) rethrow;
       try {
         await rebindIsolate();
-      } catch (_) {
+      } catch (rebindError) {
+        if (_isConnectionLostError(rebindError)) {
+          _connectionLost = true;
+          throw _connectionLostError(name);
+        }
         throw StateError(
           'QA probe isolate is gone and could not be re-resolved. The app '
           'likely hot-restarted without re-registering ext.qa.* (is '
@@ -89,9 +143,34 @@ class VmClient {
           'boot_app to recover.',
         );
       }
-      return await rawCallExtension(name, stringArgs);
+      return await _timedRawCall(name, stringArgs);
     }
   }
+
+  /// Wraps [rawCallExtension] with [callTimeout]. A timeout means the socket is
+  /// dead (or the probe is unresponsive past any reasonable bound), so we latch
+  /// the connection as lost and translate to [VmConnectionLostException] — the
+  /// next call then fails instantly instead of eating another full timeout.
+  Future<Map<String, dynamic>> _timedRawCall(
+    String name,
+    Map<String, String> args,
+  ) async {
+    try {
+      return await rawCallExtension(name, args).timeout(callTimeout);
+    } on TimeoutException {
+      _connectionLost = true;
+      throw VmConnectionLostException(
+        'VM-service call "$name" exceeded ${callTimeout.inSeconds}s — the '
+        'connection appears dead. Reattach or reboot with boot_app.',
+      );
+    }
+  }
+
+  VmConnectionLostException _connectionLostError(String name) =>
+      VmConnectionLostException(
+        'VM-service connection lost (call "$name"). Reattach or reboot with '
+        'boot_app.',
+      );
 
   /// The low-level service-extension call against the currently-bound isolate.
   /// Seam for tests and for the retry wrapper in [callExtension].
@@ -131,6 +210,9 @@ class VmClient {
   /// been collected (post hot-restart), re-resolves and rebinds to the new
   /// isolate so `app_status` reports the truth and the next call is fast.
   Future<bool> isProbeAlive() async {
+    // A dead connection can't host a live probe — and re-probing it would just
+    // hang. Answer immediately so app_status stays responsive.
+    if (_connectionLost) return false;
     if (await _boundIsolateHasQa()) return true;
     try {
       _isolateId = await resolveQaIsolate();
@@ -155,6 +237,21 @@ class VmClient {
   /// isolate that no longer exists (collected after a hot restart, expired,
   /// etc.). Matched on type and message so it survives vm_service version
   /// churn — the user-visible string was `[Sentinel kind: Collected, …]`.
+  /// Recognises errors that mean the whole connection is dead (not just the
+  /// bound isolate): the VM service was disposed, the WebSocket closed, or a
+  /// JSON-RPC internal error (-32603) was raised — the symptoms from the field
+  /// report. Matched on the message so it survives vm_service version churn.
+  static bool _isConnectionLostError(Object e) {
+    if (e is VmConnectionLostException) return true;
+    final s = e.toString().toLowerCase();
+    return s.contains('connection disposed') ||
+        s.contains('service disposed') ||
+        s.contains('connection closed') ||
+        s.contains('client is closed') ||
+        s.contains('websocket') ||
+        s.contains('-32603');
+  }
+
   static bool _isStaleIsolateError(Object e) {
     if (e is SentinelException) return true;
     final s = e.toString();

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agent_wires_mcp/src/vm/client.dart';
 import 'package:test/test.dart';
 
@@ -66,6 +68,59 @@ void main() {
         throwsA(predicate((e) =>
             e is StateError && e.toString().toLowerCase().contains('probe'))),
       );
+    });
+  });
+
+  group('connection-lost fail-fast (#1)', () {
+    test('callExtension fails fast (does not hang) when the socket is dead',
+        () async {
+      // A half-open socket leaves the underlying RPC future hanging forever.
+      // The client must bound it with a per-call timeout and surface a clear
+      // VmConnectionLostException instead of wedging for minutes (#1).
+      final vm = _HangingVm();
+      final sw = Stopwatch()..start();
+      await expectLater(
+        vm.callExtension('ext.qa.snapshot'),
+        throwsA(isA<VmConnectionLostException>()),
+      );
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(2000),
+          reason: 'must fail fast, not await the dead socket');
+    });
+
+    test('a lost connection is latched — later calls fail immediately',
+        () async {
+      final vm = _HangingVm();
+      await expectLater(vm.callExtension('ext.qa.snapshot'),
+          throwsA(isA<VmConnectionLostException>()));
+      await expectLater(vm.callExtension('ext.qa.snapshot'),
+          throwsA(isA<VmConnectionLostException>()));
+      expect(vm.rawCalls, 1,
+          reason: 'once lost, no further attempts hit the dead socket');
+      expect(vm.isConnectionLost, isTrue);
+    });
+
+    test('a disposed-connection error fails fast and does NOT rebind',
+        () async {
+      // "Service connection disposed" is a dead connection, not a stale
+      // isolate. Rebinding would also hang on the same dead socket, so the
+      // client must fail fast without attempting a rebind.
+      final vm = _DisposedConnectionVm();
+      await expectLater(
+        vm.callExtension('ext.qa.tap'),
+        throwsA(isA<VmConnectionLostException>()),
+      );
+      expect(vm.rebinds, 0,
+          reason: 'rebind would hang on the same dead socket');
+    });
+
+    test('isProbeAlive returns false fast once the connection is lost',
+        () async {
+      final vm = _HangingVm();
+      await expectLater(vm.callExtension('x'),
+          throwsA(isA<VmConnectionLostException>()));
+      expect(await vm.isProbeAlive(), isFalse,
+          reason: 'must not re-hang probing a dead connection');
     });
   });
 
@@ -153,4 +208,40 @@ class _RebindableVm extends VmClient {
 
   @override
   Future<String> resolveQaIsolate() async => 'isolates/fresh';
+}
+
+/// rawCallExtension never completes — simulates a dead/half-open socket where
+/// the RPC future hangs forever. A short [callTimeout] makes the fail-fast
+/// behaviour observable in the test's wall-clock budget.
+class _HangingVm extends VmClient {
+  _HangingVm() : super.test();
+  int rawCalls = 0;
+
+  @override
+  Duration get callTimeout => const Duration(milliseconds: 100);
+
+  @override
+  Future<Map<String, dynamic>> rawCallExtension(
+      String name, Map<String, String> args) {
+    rawCalls++;
+    return Completer<Map<String, dynamic>>().future; // never completes
+  }
+}
+
+/// Raw call throws the VM-service "connection disposed" error.
+class _DisposedConnectionVm extends VmClient {
+  _DisposedConnectionVm() : super.test();
+  int rebinds = 0;
+
+  @override
+  Future<Map<String, dynamic>> rawCallExtension(
+      String name, Map<String, String> args) async {
+    throw StateError('Service connection disposed');
+  }
+
+  @override
+  Future<String> resolveQaIsolate() async {
+    rebinds++;
+    return 'isolates/new';
+  }
 }
