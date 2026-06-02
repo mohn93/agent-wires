@@ -2,9 +2,17 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:agent_wires_probe/src/extensions/inspect_ext.dart';
 import 'package:agent_wires_probe/src/extensions/snapshot_ext.dart';
+import 'package:agent_wires_probe/src/overlay/action_overlay_controller.dart';
+import 'package:agent_wires_probe/src/overlay/action_overlay_installer.dart';
+import 'package:agent_wires_probe/src/overlay/overlay_effect.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  tearDown(() {
+    ActionOverlayController.instance.reset();
+    ActionOverlayInstaller.reset();
+  });
+
   testWidgets('inspect returns properties for a known element id', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: ElevatedButton(onPressed: () {}, child: const Text('Go'))),
@@ -144,6 +152,25 @@ void main() {
     });
     final body = jsonDecode(resp.result!) as Map<String, dynamic>;
     expect(body.containsKey('descendants'), isFalse);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a successful inspect highlights the element bounds',
+      (tester) async {
+    ActionOverlayController.instance.reset();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ElevatedButton(onPressed: () {}, child: const Text('Go')),
+      ),
+    ));
+    for (var i = 0; i < 10; i++) {
+      final resp = await InspectExtension.handle('ext.qa.inspect',
+          {'element_id': 'e_$i', 'include_descendants': 'false'});
+      if (resp.result != null) break;
+    }
+    expect(ActionOverlayController.instance.effects.whereType<HighlightEffect>(),
+        isNotEmpty);
+    await tester.pumpAndSettle();
   });
 }
 

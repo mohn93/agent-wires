@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'package:flutter/rendering.dart';
 import '../actions/text_input_driver.dart';
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
 import '../resolver/element_resolver.dart';
 
 class ClearTextExtension {
@@ -20,6 +23,13 @@ class ClearTextExtension {
     }
     try {
       await TextInputDriver.setText(element, '');
+      final ro = element.renderObject;
+      if (ro is RenderBox && ro.hasSize && ro.attached) {
+        ActionOverlayController.instance.showHighlight(
+            ro.localToGlobal(Offset.zero) & ro.size,
+            label: '(cleared)');
+        ActionOverlayInstaller.ensureInstalled();
+      }
       return _ok({'success': true});
     } catch (e) {
       return _ok({'success': false, 'error': e.toString()});

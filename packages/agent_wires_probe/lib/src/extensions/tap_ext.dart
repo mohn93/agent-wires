@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/rendering.dart';
 import '../actions/gesture_synth.dart';
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
 import '../resolver/element_resolver.dart';
 
 class TapExtension {
@@ -26,6 +28,8 @@ class TapExtension {
     final center = ro.localToGlobal(ro.size.center(Offset.zero));
     try {
       await GestureSynth.tapAt(center);
+      ActionOverlayController.instance.showTap(center);
+      ActionOverlayInstaller.ensureInstalled();
       return _ok({'success': true, 'at': {'x': center.dx, 'y': center.dy}});
     } catch (e) {
       return _ok({'success': false, 'error': e.toString()});

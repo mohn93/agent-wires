@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
+import '../overlay/overlay_marker.dart';
 import 'raw_node.dart';
 
 class ElementTreeWalker {
@@ -61,6 +62,7 @@ class ElementTreeWalker {
       }
 
       void visit(Element e, int depth, int siblingIndex) {
+        if (e.widget is AgentWiresOverlayMarker) return;
         // ignore: invalid_use_of_protected_member - WidgetInspectorService.toId is protected but has no public equivalent
         final id = inspector.toId(e, group);
         out.add(RawNode(

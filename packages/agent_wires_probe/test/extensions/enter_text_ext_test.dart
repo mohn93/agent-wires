@@ -1,9 +1,16 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:agent_wires_probe/src/extensions/enter_text_ext.dart';
+import 'package:agent_wires_probe/src/overlay/action_overlay_controller.dart';
+import 'package:agent_wires_probe/src/overlay/action_overlay_installer.dart';
+import 'package:agent_wires_probe/src/overlay/overlay_effect.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  tearDown(() {
+    ActionOverlayController.instance.reset();
+    ActionOverlayInstaller.reset();
+  });
   testWidgets('enter_text fills a TextField identified by element_id', (tester) async {
     final controller = TextEditingController();
     await tester.pumpWidget(MaterialApp(
@@ -55,5 +62,24 @@ void main() {
     final body = jsonDecode(resp.result!) as Map<String, dynamic>;
     expect(body['success'], isFalse);
     expect(body['error'], contains('element_id required'));
+  });
+
+  testWidgets('a successful enter_text highlights the field with the text',
+      (tester) async {
+    ActionOverlayController.instance.reset();
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: TextField()),
+    ));
+    for (var i = 0; i < 20; i++) {
+      final resp = await EnterTextExtension.handle('ext.qa.enter_text',
+          {'element_id': 'e_$i', 'text': 'hello'});
+      if (jsonDecode(resp.result!)['success'] == true) break;
+    }
+    final fx = ActionOverlayController.instance.effects
+        .whereType<HighlightEffect>()
+        .singleOrNull;
+    expect(fx, isNotNull);
+    expect(fx!.label, 'hello');
+    await tester.pumpAndSettle();
   });
 }

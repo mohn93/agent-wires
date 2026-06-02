@@ -9,6 +9,7 @@ import 'package:agent_wires_mcp/src/session/app_session.dart';
 import 'package:agent_wires_mcp/src/tools/action_tools.dart';
 import 'package:agent_wires_mcp/src/tools/lifecycle_tools.dart';
 import 'package:agent_wires_mcp/src/tools/logs_tools.dart';
+import 'package:agent_wires_mcp/src/tools/overlay_tools.dart';
 import 'package:agent_wires_mcp/src/tools/memory_tools.dart';
 import 'package:agent_wires_mcp/src/tools/perception.dart';
 import 'package:agent_wires_mcp/src/tools/sync_tools.dart';
@@ -159,6 +160,7 @@ Future<void> _serveStdio({
     ...lifecycleTools(session),
     ...perceptionTools(session, map),
     ...actionTools(session),
+    ...overlayTools(session),
     ...syncTools(session),
     ...memoryTools(map, session: session),
     ...logsTools(session),

@@ -4,6 +4,9 @@ import 'dart:developer' as developer;
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
+import '../overlay/overlay_effect.dart';
 
 class ScreenshotExtension {
   static const String name = 'ext.qa.screenshot';
@@ -31,7 +34,7 @@ class ScreenshotExtension {
           }),
         );
       }
-      final image = await _capture(boundary);
+      final image = await captureWithOverlaySuppressed(() => _capture(boundary!));
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       if (bytes == null) {
         return developer.ServiceExtensionResponse.error(
@@ -40,6 +43,10 @@ class ScreenshotExtension {
         );
       }
       final b64 = base64Encode(bytes.buffer.asUint8List());
+      // After suppression has ended, so the flash is never in the bytes above.
+      ActionOverlayController.instance
+          .showFlash(kind: OverlayFlashKind.screenshot);
+      ActionOverlayInstaller.ensureInstalled();
       return developer.ServiceExtensionResponse.result(jsonEncode({
         'format': 'png',
         'width': image.width,
@@ -51,6 +58,28 @@ class ScreenshotExtension {
         developer.ServiceExtensionResponse.extensionError,
         jsonEncode({'error': e.toString()}),
       );
+    }
+  }
+
+  /// Runs [body] (the rasterization) with the action overlay hidden, so the
+  /// human-only overlay never lands in the captured pixels. `toImage`
+  /// rasterizes the retained layer tree as-is, so we must commit a frame with
+  /// the overlay already painted out *before* capturing — otherwise an effect
+  /// still animating from a preceding action (a tap ripple, an inspect
+  /// highlight) leaks into the PNG. The wait is bounded so a frameless / wedged
+  /// engine can never hang the tool call (the same safety net as
+  /// [_settleFrame]). Visibility is always restored, even on failure.
+  static Future<T> captureWithOverlaySuppressed<T>(
+      Future<T> Function() body) async {
+    final c = ActionOverlayController.instance;
+    c.beginCaptureSuppression();
+    try {
+      WidgetsBinding.instance.scheduleFrame();
+      await WidgetsBinding.instance.endOfFrame
+          .timeout(const Duration(seconds: 1), onTimeout: () {});
+      return await body();
+    } finally {
+      c.endCaptureSuppression();
     }
   }
 

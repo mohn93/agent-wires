@@ -77,6 +77,13 @@ List<Tool> memoryTools(SemanticMap map, {AppSession? session}) => [
                 'error': 'element_id not found in current snapshot',
               }));
             }
+            // Best-effort: flash a point-at highlight on the element being
+            // named, so a human watching sees what got labelled. Reuses
+            // inspect's overlay highlight; ignore any failure.
+            try {
+              await vm.callExtension('ext.qa.inspect',
+                  {'element_id': elementId, 'include_descendants': 'false'});
+            } catch (_) {}
           }
 
           final existing = map.get(fp);

@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/widgets.dart';
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
+import '../overlay/overlay_geometry.dart';
 
 class PressBackExtension {
   static const String name = 'ext.qa.press_back';
@@ -28,6 +31,12 @@ class PressBackExtension {
         return _ok({'success': false, 'error': 'no Navigator found'});
       }
       final popped = await nav!.maybePop();
+      if (popped) {
+        final size = currentScreenSize();
+        ActionOverlayController.instance.showDrag(
+            Offset(12, size.height / 2), Offset(size.width * 0.45, size.height / 2));
+        ActionOverlayInstaller.ensureInstalled();
+      }
       return _ok({'success': popped});
     } catch (e) {
       return _ok({'success': false, 'error': e.toString()});

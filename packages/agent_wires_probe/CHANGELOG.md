@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.7
+
+Adds an on-screen **action overlay** — a narration layer for a human watching
+the agent drive the app. Debug-only (like the rest of the probe) and on by
+default; it never appears in the agent's `screenshot` or `snapshot`.
+
+- Draws a ripple where the agent taps/long-presses, a trail for swipes/scrolls
+  and back, a highlight box (with caption) for `enter_text`/`clear_text` and
+  `inspect`/point-at, and a brief border flash + badge for `screenshot` and
+  `snapshot`.
+- Rendered via a single `IgnorePointer` overlay inserted into the app's topmost
+  `Overlay`; effects auto-expire and are capped so a burst can't accumulate. The
+  host is never installed while the overlay is disabled, so it can't perturb the
+  app's element layout when off.
+- Kept out of the agent's perception: the snapshot walker skips the overlay
+  subtree (and the snapshot occlusion pass never treats it as a covering page),
+  and the screenshot path suppresses the overlay for the captured frame.
+- Toggle at runtime with the new `ext.qa.set_overlay` extension (paired with the
+  MCP `set_action_overlay` tool); compile-time opt-out via
+  `AgentWiresProbe.install(actionOverlay: false)`.
+
 ## 0.1.6
 
 Docs-only release. No code or API changes — refreshes the README so the

@@ -1,9 +1,17 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:agent_wires_probe/src/extensions/tap_ext.dart';
+import 'package:agent_wires_probe/src/overlay/action_overlay_controller.dart';
+import 'package:agent_wires_probe/src/overlay/action_overlay_installer.dart';
+import 'package:agent_wires_probe/src/overlay/overlay_effect.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  tearDown(() {
+    ActionOverlayController.instance.reset();
+    ActionOverlayInstaller.reset();
+  });
+
   testWidgets('tap on a known id triggers the button onPressed', (tester) async {
     var taps = 0;
     await tester.pumpWidget(MaterialApp(
@@ -37,5 +45,24 @@ void main() {
     final body = jsonDecode(resp.result!) as Map<String, dynamic>;
     expect(body['success'], isFalse);
     expect(body['error'], contains('not found'));
+  });
+
+  testWidgets('a successful tap pushes a TapEffect at the tap point',
+      (tester) async {
+    ActionOverlayController.instance.reset();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ElevatedButton(onPressed: () {}, child: const Text('Press')),
+      ),
+    ));
+    for (var i = 0; i < 10; i++) {
+      final resp =
+          await TapExtension.handle('ext.qa.tap', {'element_id': 'e_$i'});
+      if (jsonDecode(resp.result!)['success'] == true) break;
+    }
+    expect(ActionOverlayController.instance.effects.whereType<TapEffect>(),
+        isNotEmpty);
+    expect(ActionOverlayController.instance.effects.first, isA<TapEffect>());
+    await tester.pumpAndSettle();
   });
 }
