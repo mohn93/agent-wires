@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/rendering.dart';
 import '../actions/gesture_synth.dart';
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
 
 class SwipeExtension {
   static const String name = 'ext.qa.swipe';
@@ -24,6 +26,9 @@ class SwipeExtension {
         Offset(toX, toY),
         duration: Duration(milliseconds: ms),
       );
+      ActionOverlayController.instance
+          .showDrag(Offset(fromX, fromY), Offset(toX, toY));
+      ActionOverlayInstaller.ensureInstalled();
       return _ok({'success': true});
     } catch (e) {
       return _ok({'success': false, 'error': e.toString()});
