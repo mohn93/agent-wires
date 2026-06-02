@@ -62,18 +62,21 @@ class ScreenshotExtension {
   }
 
   /// Runs [body] (the rasterization) with the action overlay hidden, so the
-  /// human-only overlay never lands in the captured pixels. Schedules a frame
-  /// after hiding the overlay (best-effort; the capture retry loop already
-  /// settles frames), and always restores visibility — even on failure.
+  /// human-only overlay never lands in the captured pixels. `toImage`
+  /// rasterizes the retained layer tree as-is, so we must commit a frame with
+  /// the overlay already painted out *before* capturing — otherwise an effect
+  /// still animating from a preceding action (a tap ripple, an inspect
+  /// highlight) leaks into the PNG. The wait is bounded so a frameless / wedged
+  /// engine can never hang the tool call (the same safety net as
+  /// [_settleFrame]). Visibility is always restored, even on failure.
   static Future<T> captureWithOverlaySuppressed<T>(
       Future<T> Function() body) async {
     final c = ActionOverlayController.instance;
     c.beginCaptureSuppression();
-    // scheduleFrame is fire-and-forget; awaiting endOfFrame in a fake-async
-    // widget test would deadlock unless the caller pumps, so we only schedule
-    // and let the existing _capture retry / _settleFrame path commit the frame.
-    WidgetsBinding.instance.scheduleFrame();
     try {
+      WidgetsBinding.instance.scheduleFrame();
+      await WidgetsBinding.instance.endOfFrame
+          .timeout(const Duration(seconds: 1), onTimeout: () {});
       return await body();
     } finally {
       c.endCaptureSuppression();

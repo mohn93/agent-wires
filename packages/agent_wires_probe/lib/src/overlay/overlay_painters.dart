@@ -81,9 +81,12 @@ class OverlayEffectPainter extends CustomPainter {
 
   void _caption(
       Canvas canvas, String text, Offset at, Color color, double opacity) {
+    // Captions narrate the action (a typed string, a widget type); cap the
+    // length so a long `enter_text` value can't paint a caption off-screen.
+    final label = text.length > 24 ? '${text.substring(0, 23)}…' : text;
     final tp = TextPainter(
       text: TextSpan(
-        text: text,
+        text: label,
         style: TextStyle(
           fontSize: 11,
           color: _fade(const Color(0xFF000000), opacity),
@@ -101,5 +104,7 @@ class OverlayEffectPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(OverlayEffectPainter old) => old.effect != effect;
+  // Repaint is driven by `super(repaint: anim)`; a new painter instance per
+  // build always reflects the latest effect, so no extra signal is needed.
+  bool shouldRepaint(OverlayEffectPainter old) => false;
 }

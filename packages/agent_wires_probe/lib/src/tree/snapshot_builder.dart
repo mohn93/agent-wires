@@ -431,9 +431,11 @@ class SnapshotBuilder {
       final t = raw[i].widgetType;
       if (t == 'ModalBarrier' || t.startsWith('_ModalScope')) return false;
       if (t == '_CaptureAll') hasCaptureAll = true;
-      // The action-overlay host is a transient, human-facing overlay — it never
-      // contains an opaque page and must never occlude the real app content.
-      if (t == 'AgentWiresOverlayMarker') return true;
+      // The action-overlay host is a transient, human-facing layer that must
+      // never occlude the real app content. We key on `ActionOverlayHost`, not
+      // its `AgentWiresOverlayMarker` child — the walker skips the marker
+      // subtree, so the marker isn't in `raw`, but the host (its parent) is.
+      if (t == 'ActionOverlayHost') return true;
     }
     return hasCaptureAll;
   }
