@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
+import '../overlay/overlay_effect.dart';
 import '../tree/snapshot_builder.dart';
 
 class SnapshotExtension {
@@ -11,6 +14,9 @@ class SnapshotExtension {
   ) async {
     try {
       final snap = SnapshotBuilder.build();
+      ActionOverlayController.instance
+          .showFlash(kind: OverlayFlashKind.snapshot);
+      ActionOverlayInstaller.ensureInstalled();
       return developer.ServiceExtensionResponse.result(jsonEncode(snap.toJson()));
     } catch (e, st) {
       return developer.ServiceExtensionResponse.error(
