@@ -13,6 +13,9 @@ void main() {
   });
 
   testWidgets('long_press on a GestureDetector triggers onLongPress', (tester) async {
+    // This test probes the action, not the overlay. Turn the overlay off so
+    // installing the host can't shift the element ids the loop resolves by.
+    ActionOverlayController.instance.setEnabled(false);
     var longPresses = 0;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(

@@ -10,6 +10,11 @@ class ActionOverlayInstaller {
   static OverlayEntry? _entry;
 
   static bool ensureInstalled() {
+    // Don't add overlay machinery to the app while the overlay is turned off
+    // (e.g. `AgentWiresProbe.install(actionOverlay: false)` or a runtime
+    // `set_action_overlay(false)`). Nothing would render anyway, and staying
+    // out of the tree keeps the app's element layout untouched.
+    if (!ActionOverlayController.instance.enabled) return false;
     if (_entry != null) return true;
     final overlay = _findOverlayState();
     if (overlay == null) return false;
