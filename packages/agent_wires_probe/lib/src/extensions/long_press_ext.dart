@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/rendering.dart';
 import '../actions/gesture_synth.dart';
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
 import '../resolver/element_resolver.dart';
 
 class LongPressExtension {
@@ -27,6 +29,8 @@ class LongPressExtension {
     final center = ro.localToGlobal(ro.size.center(Offset.zero));
     try {
       await GestureSynth.longPressAt(center, hold: Duration(milliseconds: ms));
+      ActionOverlayController.instance.showTap(center, longPress: true);
+      ActionOverlayInstaller.ensureInstalled();
       return _ok({'success': true});
     } catch (e) {
       return _ok({'success': false, 'error': e.toString()});

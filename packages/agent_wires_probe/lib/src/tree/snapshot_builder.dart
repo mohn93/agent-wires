@@ -431,6 +431,9 @@ class SnapshotBuilder {
       final t = raw[i].widgetType;
       if (t == 'ModalBarrier' || t.startsWith('_ModalScope')) return false;
       if (t == '_CaptureAll') hasCaptureAll = true;
+      // The action-overlay host is a transient, human-facing overlay — it never
+      // contains an opaque page and must never occlude the real app content.
+      if (t == 'AgentWiresOverlayMarker') return true;
     }
     return hasCaptureAll;
   }
