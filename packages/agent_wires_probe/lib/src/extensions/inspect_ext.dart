@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 // ignore: unused_import — visitAncestorElements callback type lives in widgets
 import 'package:flutter/widgets.dart';
+import '../overlay/action_overlay_controller.dart';
+import '../overlay/action_overlay_installer.dart';
 import '../resolver/element_resolver.dart';
 
 class InspectExtension {
@@ -33,6 +36,13 @@ class InspectExtension {
     }
 
     final w = element.widget;
+    final ro = element.renderObject;
+    if (ro is RenderBox && ro.hasSize && ro.attached) {
+      ActionOverlayController.instance.showHighlight(
+          ro.localToGlobal(Offset.zero) & ro.size,
+          label: w.runtimeType.toString());
+      ActionOverlayInstaller.ensureInstalled();
+    }
     final props = <String, String>{};
     final builder = DiagnosticPropertiesBuilder();
     w.debugFillProperties(builder);
