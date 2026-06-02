@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.6
+
+Adds the **action overlay** narration layer (pairs with `agent_wires_probe`
+0.1.7). **Tool count grows 24 → 25.**
+
+- New `set_action_overlay(enabled)` tool toggles the probe's on-screen overlay
+  — the ripples/highlights/flashes drawn where the agent taps, types, points,
+  and looks. It is for a human watching the device and never appears in
+  `screenshot`/`snapshot`. On by default.
+- `label_element` now flashes a point-at highlight on the named element (via the
+  probe) so a watcher sees what was labelled.
+- `recommendedProbeVersion` tracks `agent_wires_probe` 0.1.7.
+
 ## 0.1.5
 
 Boot reliability fix.

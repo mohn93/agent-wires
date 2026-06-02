@@ -80,7 +80,7 @@ agent_wires_mcp review  open the human-curation dashboard
 | `-t, --target <path>` | entry-point Dart file |
 | `--dart-define KEY=VALUE` | repeatable, forwarded to `flutter run` |
 
-## Tool surface (24 tools)
+## Tool surface (25 tools)
 
 | Category | Tools |
 |---|---|
@@ -90,6 +90,18 @@ agent_wires_mcp review  open the human-curation dashboard
 | Sync | `wait_for_idle` (+ `ignore_animations` flag), `wait_for_route`, `wait_for_element` |
 | Observability | `get_logs`, `get_network` |
 | Memory | `label_element`, `get_labels`, `recall` |
+| Overlay | `set_action_overlay` |
+
+### Action overlay
+
+While the agent drives the app, the probe draws a transient on-screen visual
+where each action and perception happens — a ripple at taps, a trail for
+swipes/scrolls, a highlight box for `inspect`/text entry, a brief flash for
+`screenshot`/`snapshot`. It's a narration layer for a **human watching the
+device**, and it never appears in the agent's own `screenshot` or `snapshot`.
+On by default (debug builds only). Toggle at runtime with
+`set_action_overlay(enabled: false|true)`, or opt out at compile time with
+`AgentWiresProbe.install(actionOverlay: false)`.
 
 A typical agent loop:
 

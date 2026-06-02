@@ -21,7 +21,7 @@ from outside and exposes those as tools an agent can call.
 ```yaml
 # pubspec.yaml of the Flutter app you want to drive
 dev_dependencies:
-  agent_wires_probe: ^0.1.6
+  agent_wires_probe: ^0.1.7
 ```
 
 ```bash
@@ -82,6 +82,20 @@ you're building a different client. Full request/response shapes are in
 | `ext.qa.wait_for_element` | resolves when a label/role match appears |
 | `ext.qa.get_logs` | drains a 500-entry ring buffer of `debugPrint` / `FlutterError` / uncaught zone errors |
 | `ext.qa.get_network` | every HTTP exchange: method / url / status / duration |
+| `ext.qa.set_overlay` | toggles the action overlay (see below) at runtime |
+
+## Action overlay
+
+While an agent drives the app, the probe draws a transient on-screen visual at
+each action and perception — a ripple where it taps, a trail for swipes/scrolls,
+a highlight box for `inspect` and text entry, a brief border flash for
+`screenshot`/`snapshot`. It's a narration layer for a **human watching the
+device** and is kept out of the agent's perception: the snapshot walker skips it
+and the screenshot path suppresses it for the captured frame.
+
+On by default in debug builds. Opt out at compile time with
+`AgentWiresProbe.install(actionOverlay: false)`, or toggle it at runtime via the
+MCP `set_action_overlay` tool (which calls `ext.qa.set_overlay`).
 
 ## How the snapshot stays small
 
