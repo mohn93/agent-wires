@@ -8,6 +8,8 @@ import 'extensions/enter_text_ext.dart';
 import 'extensions/get_logs_ext.dart';
 import 'extensions/get_network_ext.dart';
 import 'extensions/inspect_ext.dart';
+import 'extensions/set_overlay_ext.dart';
+import 'overlay/action_overlay_controller.dart';
 import 'extensions/long_press_ext.dart';
 import 'extensions/press_back_ext.dart';
 import 'extensions/screenshot_ext.dart';
@@ -38,10 +40,11 @@ class AgentWiresProbe {
   static bool get isInstalled => _installed;
   static Set<String> get registeredExtensions => Set.unmodifiable(_registered);
 
-  static void install() {
+  static void install({bool actionOverlay = true}) {
     if (_installed) return;
     if (kReleaseMode) return;
     _installed = true;
+    ActionOverlayController.instance.setEnabled(actionOverlay);
     HttpInflightTracker.install();
     LogCapture.install(_logBuffer);
     GetLogsExtension.bind(_logBuffer);
@@ -67,6 +70,7 @@ class AgentWiresProbe {
     _register(WaitForRouteExtension.name, WaitForRouteExtension.handle);
     _register(GetLogsExtension.name, GetLogsExtension.handle);
     _register(GetNetworkExtension.name, GetNetworkExtension.handle);
+    _register(SetOverlayExtension.name, SetOverlayExtension.handle);
   }
 
   static void _register(
