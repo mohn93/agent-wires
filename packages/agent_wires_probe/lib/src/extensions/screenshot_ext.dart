@@ -146,6 +146,10 @@ class ScreenshotExtension {
     double bestArea = -1;
     void walk(RenderObject ro) {
       if (ro is RenderRepaintBoundary) {
+        // RenderObject.layer is the only way to tell whether this boundary was
+        // painted into the live scene (covered routes are detached); there is
+        // no public equivalent.
+        // ignore: invalid_use_of_protected_member
         final layer = ro.layer;
         if (layer != null && layer.attached) {
           final size = ro.paintBounds.size;
