@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.8
+
+Fixes `scroll` on screens with an offstage / not-yet-laid-out `Scrollable`
+ahead of the content list — most commonly an app wrapped in `DevicePreview`,
+but also lazy `IndexedStack` tab shells and collapsed bottom sheets (#12).
+
+- **No more `Null check operator used on a null value`.** The driver picked the
+  first `Scrollable` in pre-order traversal even when its `ScrollPosition` was
+  unattached, then dereferenced `_position!` / `_pixels!`. Selection now skips
+  scrollables without an attached, dimensioned position, and `_drive` bails out
+  gracefully instead of throwing.
+- **The real content list is no longer shadowed.** Selection filters to the
+  requested axis and prefers the largest viewport, so a horizontal chrome strip
+  (e.g. DevicePreview's device picker) no longer wins over the vertical list.
+- **`scroll` with an `element_id` of a list row now works.** `scrollIn` walks up
+  to the nearest enclosing `Scrollable` of the requested axis when the target
+  has no scrollable descendant, since the list is an ancestor of the row.
+
 ## 0.1.7
 
 Adds an on-screen **action overlay** — a narration layer for a human watching
