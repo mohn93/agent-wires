@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.9
+
+Fixes `screenshot` returning a **stale frame** — most visibly "one navigation
+behind": a freshly-navigated, fully idle screen captured the *previous* route,
+byte-identical across repeated calls (#13).
+
+- **Root cause: the wrong `RepaintBoundary` was captured.** Flutter wraps every
+  Navigator route in its own `RepaintBoundary` (`_ModalScope`). The capture path
+  selected the *first* boundary in pre-order traversal — the bottom/oldest route
+  in the stack, which the current route covers. Its retained layer still holds
+  whatever it last painted (the previous screen, or a mid-transition frame), and
+  the Overlay never repaints it — which also made `'!debugNeedsPaint'` assert on
+  that covered route even when the binding was idle.
+- **Fix: capture the visible route.** A covered route's layer is detached from
+  the live scene while the visible route's is attached, so the capture now picks
+  the largest **attached** boundary. `debugNeedsPaint` is deliberately not part
+  of the selection — the visible route can be transiently dirty (e.g. a blinking
+  text cursor); that case is still handled by the existing settle-and-retry.
+
 ## 0.1.8
 
 Fixes `scroll` on screens with an offstage / not-yet-laid-out `Scrollable`

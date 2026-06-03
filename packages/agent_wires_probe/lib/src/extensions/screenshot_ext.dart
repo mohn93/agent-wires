@@ -19,10 +19,10 @@ class ScreenshotExtension {
       // First-call race: the agent may screenshot before the first frame has
       // rasterized (no rootElement yet, or no RepaintBoundary yet). Settle one
       // frame and look again before giving up.
-      var boundary = _findRootRepaintBoundary();
+      var boundary = _findVisibleRepaintBoundary();
       if (boundary == null) {
         await _settleFrame();
-        boundary = _findRootRepaintBoundary();
+        boundary = _findVisibleRepaintBoundary();
       }
       if (boundary == null) {
         return developer.ServiceExtensionResponse.error(
@@ -102,7 +102,7 @@ class ScreenshotExtension {
         lastError = e;
         if (i < attempts - 1) {
           await _settleFrame();
-          boundary = _findRootRepaintBoundary() ?? boundary;
+          boundary = _findVisibleRepaintBoundary() ?? boundary;
         }
       }
     }
@@ -124,18 +124,47 @@ class ScreenshotExtension {
     }
   }
 
-  static RenderRepaintBoundary? _findRootRepaintBoundary() {
-    RenderRepaintBoundary? found;
+  /// Finds the on-screen content boundary to capture.
+  ///
+  /// Flutter wraps every Navigator route in its own `RepaintBoundary`
+  /// (`_ModalScope`). The naive "first RepaintBoundary in DFS" picks the
+  /// *bottom* (oldest) route in the stack — a route that is covered by the
+  /// current one, whose retained layer holds whatever it last painted (the
+  /// previous screen, or a mid-transition frame). That is the root cause of
+  /// the "screenshot is one navigation behind / byte-identical stale frame"
+  /// bug (#13), and of the `!debugNeedsPaint` assert firing on a covered route
+  /// that the Overlay never repaints.
+  ///
+  /// A covered route's layer is *detached* from the live scene, while the
+  /// visible route's layer is attached. So we pick the largest **attached**
+  /// boundary (the full-screen visible route), preferring the outermost on a
+  /// tie. We deliberately do not filter on `debugNeedsPaint` here: the visible
+  /// route can be transiently dirty (e.g. a blinking text cursor, #4) — that
+  /// retry is handled by [_capture].
+  static RenderRepaintBoundary? _findVisibleRepaintBoundary() {
+    RenderRepaintBoundary? best;
+    double bestArea = -1;
     void walk(RenderObject ro) {
-      if (found != null) return;
       if (ro is RenderRepaintBoundary) {
-        found = ro;
-        return;
+        // RenderObject.layer is the only way to tell whether this boundary was
+        // painted into the live scene (covered routes are detached); there is
+        // no public equivalent.
+        // ignore: invalid_use_of_protected_member
+        final layer = ro.layer;
+        if (layer != null && layer.attached) {
+          final size = ro.paintBounds.size;
+          final area = size.width * size.height;
+          if (area > bestArea) {
+            bestArea = area;
+            best = ro;
+          }
+        }
       }
       ro.visitChildren(walk);
     }
+
     final root = WidgetsBinding.instance.rootElement?.renderObject;
     if (root != null) walk(root);
-    return found;
+    return best;
   }
 }
