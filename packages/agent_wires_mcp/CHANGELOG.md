@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Fix Windows startup crash.** `ProcessSignal.sigterm.watch()` throws
+  `SignalException` on Windows (`Failed to listen for SIGTERM ... errno = 50`),
+  killing the MCP server before it could serve. The SIGTERM shutdown listener is
+  now guarded with `!Platform.isWindows`; SIGINT still handles Ctrl+C / client
+  shutdown on Windows.
+
 ## 0.1.6
 
 Adds the **action overlay** narration layer (pairs with `agent_wires_probe`

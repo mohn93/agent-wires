@@ -179,7 +179,13 @@ Future<void> _serveStdio({
   }
 
   shutdownSignals.add(ProcessSignal.sigint.watch().listen((_) => handleShutdown()));
-  shutdownSignals.add(ProcessSignal.sigterm.watch().listen((_) => handleShutdown()));
+  // SIGTERM is not supported on Windows: ProcessSignal.sigterm.watch() throws
+  // SignalException ("Failed to listen for SIGTERM ... errno = 50") and the
+  // server dies on startup. Guard it so the MCP server boots on Windows; SIGINT
+  // already covers Ctrl+C / client shutdown there.
+  if (!Platform.isWindows) {
+    shutdownSignals.add(ProcessSignal.sigterm.watch().listen((_) => handleShutdown()));
+  }
 
   await for (final msg in transport.incoming) {
     final resp = await protocol.handle(msg);
