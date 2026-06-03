@@ -29,7 +29,7 @@ machine.
 ```yaml
 # pubspec.yaml
 dev_dependencies:
-  agent_wires_probe: ^0.1.6
+  agent_wires_probe: ^0.1.9
 ```
 
 ```dart
@@ -193,7 +193,7 @@ Each takes ~90 s end-to-end (mostly the Xcode build).
 
 ## Status & roadmap
 
-`agent_wires_mcp 0.1.4` / `agent_wires_probe 0.1.6` — current release.
+`agent_wires_mcp 0.1.7` / `agent_wires_probe 0.1.9` — current release.
 First verified end-to-end on a real production app (auth + multi-tab
 navigation + DNS settings + invoice list, ~9 screens) at 0.1.0; the tool
 surface and JSON shapes have been stable since. Recent releases harden the
