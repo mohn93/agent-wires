@@ -25,16 +25,28 @@ class AppSession {
     required String workingDirectory,
     String? deviceId,
     List<String> flutterArgs = const <String>[],
+    this.bootTimeout = defaultBootTimeout,
   })  : _workingDirectory = workingDirectory,
         _deviceId = deviceId,
         _flutterArgs = flutterArgs,
         _attached = false;
+
+  /// Default upper bound on a single `flutter run` boot. Large apps
+  /// (firebase, native plugins) can take well past 5 min on a cold compile;
+  /// `boot_app(timeout_minutes)` raises it further for a known-cold cache.
+  static const Duration defaultBootTimeout = Duration(minutes: 10);
+
+  /// How long [ensureReady] waits for `flutter run` to report a VM service
+  /// URI before giving up. Mutable so `boot_app(timeout_minutes)` can raise
+  /// it; the new value sticks for the rest of the session.
+  Duration bootTimeout;
 
   AppSession.attached(VmClient vm)
       : _workingDirectory = null,
         _deviceId = null,
         _flutterArgs = const <String>[],
         _attached = true,
+        bootTimeout = defaultBootTimeout,
         _vm = vm,
         _state = AppState.ready;
 
@@ -55,9 +67,29 @@ class AppSession {
   // we read it through the (now-null) runner.
   String? _latestProgress;
   Future<VmClient>? _bootFuture;
+  Future<VmClient>? _reattachFuture;
 
   AppState get state => _state;
   String? get lastError => _lastError;
+
+  /// True for `serve --attach` sessions, which wrap a VM client they did not
+  /// create and therefore cannot reattach or reboot on their own.
+  bool get isAttached => _attached;
+
+  /// True when the session looks `ready` but its VM-service socket is known
+  /// to be dead. `app_status` surfaces this so the agent knows the next
+  /// `boot_app` will reattach rather than "do nothing".
+  bool get isConnectionLost => _vm?.isConnectionLost ?? false;
+
+  /// Whether [ensureReady] should try to reattach instead of returning the
+  /// cached client: only a `ready` session whose connection was latched as
+  /// lost. Pure + testable.
+  @visibleForTesting
+  static bool needsReattach({
+    required AppState state,
+    required bool connectionLost,
+  }) =>
+      state == AppState.ready && connectionLost;
   String? get deviceId => _deviceId;
   Uri? get vmServiceUri =>
       _state == AppState.ready ? _runner?.vmServiceUriOrNull : null;
@@ -121,9 +153,7 @@ class AppSession {
     required String? currentDevice,
     required String requestedDevice,
   }) =>
-      !attached &&
-      state == AppState.ready &&
-      currentDevice != requestedDevice;
+      !attached && state == AppState.ready && currentDevice != requestedDevice;
 
   /// Pins [deviceId] for the next boot, force-stopping first when the app is
   /// already running on a different device. This lets `boot_app(device_id)`
@@ -152,7 +182,34 @@ class AppSession {
   /// stay terminal because we have no way to reconnect to a process we
   /// don't own; the caller must construct a new AppSession.
   Future<VmClient> ensureReady() async {
-    if (_state == AppState.ready && _vm != null) return _vm!;
+    if (_state == AppState.ready && _vm != null) {
+      if (!needsReattach(
+          state: _state, connectionLost: _vm!.isConnectionLost)) {
+        return _vm!;
+      }
+      // The socket died but the flutter process may well be alive (a
+      // transient VM-service drop). Previously this branch handed back the
+      // dead client forever and `boot_app` reported "ready" without
+      // reconnecting — the only way out was stop_app + boot_app.
+      if (_attached) {
+        throw StateError(
+          'VM-service connection lost and an attached AppSession cannot '
+          'reconnect on its own. Restart the MCP server against the app\'s '
+          'current VM service URI.',
+        );
+      }
+      // Concurrent tools racing after a socket drop (app_status polling while
+      // snapshot runs) must share one reconnect, like boots share _bootFuture.
+      final inFlight = _reattachFuture;
+      if (inFlight != null) return inFlight;
+      final future = _reattachOrReboot();
+      _reattachFuture = future;
+      try {
+        return await future;
+      } finally {
+        _reattachFuture = null;
+      }
+    }
     if (_state == AppState.exited) {
       if (_attached) {
         throw StateError(
@@ -181,6 +238,28 @@ class AppSession {
     }
   }
 
+  /// Re-opens the VM-service socket of the still-running flutter process.
+  /// Falls back to a full reboot when the process (or its URI) is gone.
+  Future<VmClient> _reattachOrReboot() async {
+    final uri = _runner?.vmServiceUriOrNull;
+    if (uri != null) {
+      try {
+        try {
+          await _vm?.dispose().timeout(const Duration(seconds: 2));
+        } catch (_) {}
+        final vm = await VmClient.connect(uri);
+        _vm = vm;
+        _lastError = null;
+        return vm;
+      } catch (e) {
+        stderr.writeln(
+            'agent_wires_mcp: reattach to $uri failed ($e); rebooting');
+      }
+    }
+    await dispose();
+    return ensureReady();
+  }
+
   Future<VmClient> _boot() async {
     _state = AppState.booting;
     _lastError = null;
@@ -205,7 +284,7 @@ class AppSession {
       // take well past 5 min on a cold compile. Be generous — the user
       // sees the wait in their progress UI anyway, and timing out
       // prematurely just bricks the session.
-      await runner.start(timeout: const Duration(minutes: 10));
+      await runner.start(timeout: bootTimeout);
       final vm = await VmClient.connect(runner.vmServiceUri);
       _vm = vm;
       _state = AppState.ready;

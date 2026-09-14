@@ -17,6 +17,18 @@ class VmConnectionLostException implements Exception {
   String toString() => 'VmConnectionLostException: $message';
 }
 
+/// Thrown when a single extension call exceeded its timeout while the VM
+/// itself still answered a liveness probe: the probe was slow (a long
+/// `wait_for_*`, a heavy snapshot), not dead. Unlike
+/// [VmConnectionLostException] this does NOT latch the connection — the next
+/// call goes through normally.
+class VmCallTimeoutException implements Exception {
+  VmCallTimeoutException(this.message);
+  final String message;
+  @override
+  String toString() => 'VmCallTimeoutException: $message';
+}
+
 class VmClient {
   VmClient._(this._service, this._isolateId) {
     _wireConnectionState();
@@ -121,13 +133,25 @@ class VmClient {
   Future<Map<String, dynamic>> callExtension(
     String name, [
     Map<String, dynamic>? args,
-  ]) async {
+  ]) =>
+      callExtensionWithTimeout(name, args, callTimeout);
+
+  /// [callExtension] with an explicit per-call [timeout] in place of
+  /// [callTimeout]. Sync tools pass the probe-side wait plus a margin so a
+  /// legitimate 30 s `wait_for_element` is not mistaken for a dead socket.
+  /// Kept separate so existing overrides of [callExtension] stay valid.
+  Future<Map<String, dynamic>> callExtensionWithTimeout(
+    String name,
+    Map<String, dynamic>? args,
+    Duration timeout,
+  ) async {
     // Already-dead connection: don't even touch the socket — fail instantly.
     if (_connectionLost) throw _connectionLostError(name);
     final stringArgs = <String, String>{};
     args?.forEach((k, v) => stringArgs[k] = v is String ? v : jsonEncode(v));
+    final effectiveTimeout = timeout;
     try {
-      return await _timedRawCall(name, stringArgs);
+      return await _timedRawCall(name, stringArgs, effectiveTimeout);
     } catch (e) {
       // A dead connection is NOT a stale isolate: rebinding re-resolves over
       // the same dead socket and would hang again. Latch and fail fast.
@@ -150,7 +174,7 @@ class VmClient {
           'boot_app to recover.',
         );
       }
-      return await _timedRawCall(name, stringArgs);
+      return await _timedRawCall(name, stringArgs, effectiveTimeout);
     }
   }
 
@@ -161,15 +185,40 @@ class VmClient {
   Future<Map<String, dynamic>> _timedRawCall(
     String name,
     Map<String, String> args,
+    Duration timeout,
   ) async {
     try {
-      return await rawCallExtension(name, args).timeout(callTimeout);
+      return await rawCallExtension(name, args).timeout(timeout);
     } on TimeoutException {
+      // A slow probe and a dead socket look identical from the RPC future.
+      // Tell them apart with a cheap VM round-trip before condemning the
+      // whole session: latching a live connection as lost is what turned a
+      // long wait_for_element into a "reboot the app" incident.
+      if (await isConnectionAlive()) {
+        throw VmCallTimeoutException(
+          'VM-service call "$name" exceeded ${timeout.inSeconds}s but the VM '
+          'is still responding — the probe was busy (a long wait or heavy '
+          'snapshot). Retry, or pass a longer timeout.',
+        );
+      }
       _connectionLost = true;
       throw VmConnectionLostException(
-        'VM-service call "$name" exceeded ${callTimeout.inSeconds}s — the '
-        'connection appears dead. Reattach or reboot with boot_app.',
+        'VM-service call "$name" exceeded ${timeout.inSeconds}s and the VM '
+        'did not answer a liveness check — the connection appears dead. '
+        'Reattach or reboot with boot_app.',
       );
+    }
+  }
+
+  /// Cheap liveness probe of the VM-service socket itself (a `getVM`),
+  /// bounded so a dead socket answers "no" quickly. Seam for tests.
+  @visibleForTesting
+  Future<bool> isConnectionAlive() async {
+    try {
+      await _service.getVM().timeout(const Duration(milliseconds: 750));
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

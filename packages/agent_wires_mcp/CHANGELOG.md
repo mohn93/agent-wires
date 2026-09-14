@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.1.8
+
+Stops a slow probe from being mistaken for a dead connection, and makes a
+dropped VM-service socket recoverable without a rebuild.
+
+- **Long waits no longer latch the session as lost.** `wait_for_element`,
+  `wait_for_route` and `wait_for_idle` legitimately block inside the probe for
+  up to their `timeout_ms`; with the flat 30 s call timeout a
+  `wait_for_element(timeout_ms: 30000)` timed out on the MCP side, latched
+  `VmConnectionLostException`, and every later tool call failed until
+  `stop_app` + `boot_app`. Sync tools now pass a per-call timeout of
+  `timeout_ms + 10 s` (`VmClient.callExtensionWithTimeout`).
+- **A timeout is verified before condemning the socket.** On any call
+  timeout the client first runs a bounded `getVM` liveness check: if the VM
+  answers, the call fails with the new non-latching `VmCallTimeoutException`
+  ("probe was busy, retry or pass a longer timeout"); only a VM that stays
+  silent latches the connection as lost.
+- **`boot_app` reattaches after a lost connection (lazy sessions).** A
+  `ready` session whose socket died used to hand back the dead client forever
+  (`boot_app` returned "ready" without reconnecting). It now reconnects to the
+  still-running flutter process's VM service and only falls back to a full
+  reboot when that fails; concurrent tool calls share one reconnect. Attached
+  sessions (`serve --attach`) cannot reconnect on their own and now fail with
+  a clear error instead of returning the dead client. `app_status` reports
+  `connection_lost: true` with a mode-specific hint.
+- **`boot_app(timeout_minutes)`** raises the boot deadline (default 10, max
+  60) for cold caches where pod install plus a first Xcode build exceed ten
+  minutes and the timed-out boot would otherwise be killed mid-build.
+- **Boot failures quote Xcode's output.** `flutter run --machine` reports the
+  build log as status-level `daemon.logMessage` events on stdout; the
+  premature-exit error only carried the stderr tail ("Could not build the
+  application for the simulator") and left the agent guessing. The error now
+  drains and includes a tail of the stdout log as well.
+- `wait_for_element` gains `match: "exact" | "substring"` (default exact) and
+  documents the probe's word-boundary substring matching; `snapshot`
+  documents the new `offscreen` flag. Sync-tool `timeout_ms` accepts numbers
+  or numeric strings and is capped at 10 minutes. Pairs with
+  `agent_wires_probe` **0.1.10** (`recommendedProbeVersion` bumped).
+
 ## 0.1.7
 
 - **Fix Windows startup crash.** `ProcessSignal.sigterm.watch()` throws

@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import '../actions/gesture_synth.dart';
 import '../overlay/action_overlay_controller.dart';
 import '../overlay/action_overlay_installer.dart';
+import '../overlay/overlay_geometry.dart';
 import '../resolver/element_resolver.dart';
 
 class TapExtension {
@@ -26,11 +27,27 @@ class TapExtension {
       return _ok({'success': false, 'error': 'element has no render box'});
     }
     final center = ro.localToGlobal(ro.size.center(Offset.zero));
+    final screen = currentScreenSize();
+    if (!(Offset.zero & screen).contains(center)) {
+      // Synthesizing a pointer event off-screen "succeeds" silently and the
+      // agent then wonders why nothing happened. Fail loudly instead.
+      return _ok({
+        'success': false,
+        'error': 'element center (${center.dx.toStringAsFixed(1)}, '
+            '${center.dy.toStringAsFixed(1)}) is outside the viewport '
+            '${screen.width.toStringAsFixed(0)}x${screen.height.toStringAsFixed(0)}; '
+            'scroll it into view first',
+        'at': {'x': center.dx, 'y': center.dy},
+      });
+    }
     try {
       await GestureSynth.tapAt(center);
       ActionOverlayController.instance.showTap(center);
       ActionOverlayInstaller.ensureInstalled();
-      return _ok({'success': true, 'at': {'x': center.dx, 'y': center.dy}});
+      return _ok({
+        'success': true,
+        'at': {'x': center.dx, 'y': center.dy}
+      });
     } catch (e) {
       return _ok({'success': false, 'error': e.toString()});
     }

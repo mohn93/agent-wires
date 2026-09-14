@@ -42,6 +42,14 @@ class FlutterRunner {
   String? _appId;
   String? _latestProgress;
   final StringBuffer _stderrTail = StringBuffer();
+
+  /// Recent `daemon.logMessage` / `app.log` lines from stdout, oldest first.
+  /// `flutter run --machine` reports Xcode's build output here at status
+  /// level — stderr only ever carries the generic "Could not build the
+  /// application" line — so a premature-exit error quotes this tail too.
+  final List<String> _logTail = <String>[];
+  static const int _logTailMaxLines = 40;
+  static const int _logTailMaxChars = 6000;
   int _nextRequestId = 1;
   final Map<int, Completer<Map<String, dynamic>>> _pendingResponses = {};
 
@@ -81,16 +89,18 @@ class FlutterRunner {
     _process = proc;
 
     final vmReady = Completer<Uri>();
-    proc.stdout
+    final stdoutDone = proc.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
-        .listen((line) => _onStdoutLine(line, vmReady));
+        .listen((line) => _onStdoutLine(line, vmReady))
+        .asFuture<void>()
+        .catchError((_) {});
     // Surface flutter's stderr so the caller can debug build failures, and
     // keep a tail of it to attach to a premature-exit error below.
-    proc.stderr.transform(utf8.decoder).listen((chunk) {
+    final stderrDone = proc.stderr.transform(utf8.decoder).listen((chunk) {
       stderr.write(chunk);
       _appendStderrTail(chunk);
-    });
+    }).asFuture<void>().catchError((_) {});
 
     // Fail fast if flutter exits before reporting a VM service URI. Without
     // this, a `flutter run` that dies during the build (codesign failure, no
@@ -98,9 +108,15 @@ class FlutterRunner {
     // fvm-managed Flutter not on the spawned PATH) leaves the boot hanging on
     // the full timeout while app_status shows a frozen "Running Xcode
     // build..." and no flutter/xcodebuild process is even alive.
-    unawaited(proc.exitCode.then((code) {
+    unawaited(proc.exitCode.then((code) async {
+      if (vmReady.isCompleted) return;
+      // The exit code can land before the last stdout/stderr chunks are
+      // delivered; drain them (bounded) so the error quotes the real failure.
+      await Future.wait([stdoutDone, stderrDone])
+          .timeout(const Duration(seconds: 2), onTimeout: () => const []);
       if (vmReady.isCompleted) return;
       final tail = _stderrTail.toString().trim();
+      final logTail = _logTail.join('\n').trim();
       vmReady.completeError(StateError(
         'flutter exited (code $code) before reporting a VM service URI — the '
         'boot failed rather than completing. '
@@ -109,6 +125,7 @@ class FlutterRunner {
         '`flutter` resolving to the wrong SDK (e.g. an fvm-managed Flutter not '
         "on the MCP server's PATH — try an absolute path or `fvm dart pub "
         'global run`).'
+        '${logTail.isNotEmpty ? '\n--- flutter log (tail) ---\n$logTail' : ''}'
         '${tail.isNotEmpty ? '\n--- flutter stderr (tail) ---\n$tail' : ''}',
       ));
     }));
@@ -118,6 +135,22 @@ class FlutterRunner {
     } on TimeoutException {
       await stop();
       rethrow;
+    }
+  }
+
+  /// Records the full text of log events (any level) in a bounded tail.
+  void _appendLogTail(dynamic event, Map<String, dynamic> p) {
+    final message = switch (event) {
+      'daemon.logMessage' => p['message'],
+      'app.log' => p['log'],
+      _ => null,
+    };
+    if (message is! String || message.isEmpty) return;
+    _logTail.add(message);
+    while (_logTail.length > _logTailMaxLines ||
+        _logTail.fold<int>(0, (n, s) => n + s.length + 1) > _logTailMaxChars) {
+      if (_logTail.length <= 1) break;
+      _logTail.removeAt(0);
     }
   }
 
@@ -230,6 +263,7 @@ class FlutterRunner {
         final appId = p['appId'];
         if (appId is String) _appId = appId;
       }
+      _appendLogTail(event, p);
       // app.progress / daemon.logMessage carry the Xcode / Pod / compile
       // status. Surface them so a slow cold boot doesn't look like a hang.
       final progress = extractProgressMessage(event, p);

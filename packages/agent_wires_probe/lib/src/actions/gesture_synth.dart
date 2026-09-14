@@ -18,7 +18,8 @@ class GestureSynth {
     ));
   }
 
-  static Future<void> longPressAt(Offset position, {Duration hold = const Duration(milliseconds: 600)}) async {
+  static Future<void> longPressAt(Offset position,
+      {Duration hold = const Duration(milliseconds: 600)}) async {
     final pointer = _nextPointer++;
     final binding = GestureBinding.instance;
     binding.handlePointerEvent(PointerDownEvent(
@@ -34,7 +35,9 @@ class GestureSynth {
     ));
   }
 
-  static Future<void> swipe(Offset from, Offset to, {Duration duration = const Duration(milliseconds: 300), int steps = 20}) async {
+  static Future<void> swipe(Offset from, Offset to,
+      {Duration duration = const Duration(milliseconds: 300),
+      int steps = 20}) async {
     final pointer = _nextPointer++;
     final binding = GestureBinding.instance;
     final dt = duration ~/ steps;
@@ -44,14 +47,20 @@ class GestureSynth {
       timeStamp: Duration.zero,
     ));
     var t = dt;
+    var previous = from;
     for (var i = 1; i <= steps; i++) {
       final frac = i / steps;
       final pos = Offset.lerp(from, to, frac)!;
+      // Drag recognizers accumulate `event.delta`, not positions. Without a
+      // real delta the move never clears the touch slop, the arena never
+      // resolves, and a ListView under the finger does not scroll at all.
       binding.handlePointerEvent(PointerMoveEvent(
         pointer: pointer,
         position: pos,
+        delta: pos - previous,
         timeStamp: t,
       ));
+      previous = pos;
       t += dt;
     }
     binding.handlePointerEvent(PointerUpEvent(
