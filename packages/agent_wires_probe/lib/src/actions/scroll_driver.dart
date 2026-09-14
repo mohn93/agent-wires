@@ -1,5 +1,8 @@
 import 'package:flutter/widgets.dart';
 
+import '../overlay/overlay_geometry.dart';
+import '../tree/snapshot_builder.dart';
+
 /// Scroll direction for [ScrollDriver]. Named [ScrollDir] to avoid clashing
 /// with Flutter's own [ScrollDirection] from package:flutter/rendering.dart.
 enum ScrollDir { up, down, left, right }
@@ -10,19 +13,41 @@ class ScrollDriver {
   /// Searches [root]'s descendants first; if none qualify (e.g. the caller
   /// passed a leaf row whose list is an *ancestor*), walks up to the nearest
   /// enclosing [Scrollable] of the requested axis.
-  static Future<bool> scrollIn(Element root, ScrollDir direction, double pixels) async {
+  static Future<bool> scrollIn(
+      Element root, ScrollDir direction, double pixels) async {
     final state = _selectScrollable(root, direction) ??
         _ancestorScrollable(root, direction);
     if (state == null) return false;
     return _drive(state, direction, pixels);
   }
 
-  static Future<bool> scrollAnyVisible(ScrollDir direction, double pixels) async {
+  static Future<bool> scrollAnyVisible(
+      ScrollDir direction, double pixels) async {
     final root = WidgetsBinding.instance.rootElement;
     if (root == null) return false;
-    final state = _selectScrollable(root, direction);
+    // Refresh the occlusion pass so lists buried under a pushed route are
+    // excluded: Flutter keeps prior routes laid out (with usable scroll
+    // positions), and the largest-viewport heuristic alone happily scrolled
+    // the home list underneath the screen the user was looking at.
+    // (keptNodes is the full snapshot pass; the element_id path already pays
+    // the same cost via ElementResolver, and it refreshes hiddenElements.)
+    SnapshotBuilder.keptNodes();
+    // No fallback to a hidden list: scrolling content the user cannot see and
+    // reporting success is exactly the failure this guards against.
+    final state = _selectScrollable(root, direction, visibleOnly: true);
     if (state == null) return false;
     return _drive(state, direction, pixels);
+  }
+
+  /// Whether [element]'s scrollable is something the user can see right now:
+  /// not inside an occluded overlay entry / pointer-blocked subtree, and with
+  /// a viewport that actually intersects the screen.
+  static bool _isVisible(Element element) {
+    if (SnapshotBuilder.hiddenElements.contains(element)) return false;
+    final ro = element.renderObject;
+    if (ro is! RenderBox || !ro.hasSize || !ro.attached) return false;
+    final rect = ro.localToGlobal(Offset.zero) & ro.size;
+    return rect.overlaps(Offset.zero & currentScreenSize());
   }
 
   static Future<bool> _drive(
@@ -83,7 +108,11 @@ class ScrollDriver {
   /// Picks the best drivable scrollable in [root]'s subtree for [direction]:
   /// usable position + matching axis, preferring the largest viewport (the
   /// on-screen content list rather than a small chrome strip).
-  static ScrollableState? _selectScrollable(Element root, ScrollDir direction) {
+  static ScrollableState? _selectScrollable(
+    Element root,
+    ScrollDir direction, {
+    bool visibleOnly = false,
+  }) {
     ScrollableState? best;
     double bestExtent = -1;
     void consider(ScrollableState state) {
@@ -98,7 +127,9 @@ class ScrollDriver {
 
     void visit(Element e) {
       if (e is StatefulElement && e.state is ScrollableState) {
-        consider(e.state as ScrollableState);
+        if (!visibleOnly || _isVisible(e)) {
+          consider(e.state as ScrollableState);
+        }
       }
       e.visitChildren(visit);
     }
@@ -109,7 +140,8 @@ class ScrollDriver {
 
   /// Nearest enclosing drivable [Scrollable] of the requested axis, for when a
   /// leaf element was passed whose list is an ancestor.
-  static ScrollableState? _ancestorScrollable(Element element, ScrollDir direction) {
+  static ScrollableState? _ancestorScrollable(
+      Element element, ScrollDir direction) {
     final wantsVertical =
         direction == ScrollDir.up || direction == ScrollDir.down;
     final axis = wantsVertical ? Axis.vertical : Axis.horizontal;

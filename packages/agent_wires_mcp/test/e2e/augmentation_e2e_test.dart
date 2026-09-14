@@ -63,7 +63,8 @@ void main() {
       await callTool('tap', {'element_id': goToCart['id']});
       await callTool('wait_for_route', {'route': '/cart', 'timeout_ms': 5000});
 
-      final cart = await callTool('snapshot', {});
+      // The snapshot tool strips `unresolved` unless asked for it.
+      final cart = await callTool('snapshot', {'include_unresolved': true});
       final unresolved = (cart['unresolved'] as List? ?? []);
       expect(unresolved, isNotEmpty,
           reason: 'expected at least one unresolved tappable on cart screen');
@@ -77,7 +78,7 @@ void main() {
       });
       expect(labelResp['success'], isTrue);
 
-      final after = await callTool('snapshot', {});
+      final after = await callTool('snapshot', {'include_unresolved': true});
       final resolvedMatch = (after['elements'] as List).any(
         (e) => (e as Map)['fingerprint'] == fp && e['label'] == 'Delete Item',
       );

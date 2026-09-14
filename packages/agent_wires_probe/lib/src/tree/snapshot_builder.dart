@@ -167,6 +167,7 @@ class SnapshotBuilder {
     final elements = <ElementRecord>[];
     final unresolved = <ElementRecord>[];
     final kept = keptNodes();
+    final viewport = _viewportRect();
 
     for (var cursor = 0; cursor < kept.length; cursor++) {
       final node = kept[cursor];
@@ -197,6 +198,11 @@ class SnapshotBuilder {
         bounds: node.bounds,
         creationLocation: node.creationLocation,
         enabled: true,
+        // Same rule as the tap/long_press guard (center inside the viewport)
+        // so the snapshot never says "on screen" for a row tap will refuse.
+        offscreen: viewport != null &&
+            node.bounds != null &&
+            !viewport.contains(node.bounds!.center),
       );
       if (inferred.label != null) {
         elements.add(record);
@@ -266,8 +272,7 @@ class SnapshotBuilder {
   /// Non-covering entries above the topmost covering one (dialogs, snack
   /// bars, semi-transparent overlays) and the covering entry itself
   /// remain visible. Below the covering entry, everything is dropped.
-  static List<bool> _computeOccluded(
-      List<RawNode> raw, List<int> subtreeEnd) {
+  static List<bool> _computeOccluded(List<RawNode> raw, List<int> subtreeEnd) {
     final occluded = List<bool>.filled(raw.length, false);
     var theatersFound = 0;
     var entriesProcessed = 0;
@@ -532,7 +537,6 @@ class SnapshotBuilder {
     });
     return out.reversed.toList();
   }
-
 }
 
 class _Kept {
@@ -595,4 +599,3 @@ class OcclusionStats {
         if (details.isNotEmpty) 'theaters': details,
       };
 }
-

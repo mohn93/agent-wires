@@ -1,7 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 class Proposal {
-  Proposal({required this.source, required this.label, required this.confidence});
+  Proposal(
+      {required this.source, required this.label, required this.confidence});
   final String source;
   final String label;
   final double confidence;
@@ -25,6 +26,7 @@ class ElementRecord {
     required this.enabled,
     this.state,
     this.proposals = const [],
+    this.offscreen = false,
   });
 
   final String id;
@@ -36,6 +38,12 @@ class ElementRecord {
   final Rect? bounds;
   final String? creationLocation;
   final bool enabled;
+
+  /// True when the element is laid out but its center lies outside the
+  /// viewport (e.g. rows further down a scrollable column) — the same rule
+  /// `tap`/`long_press` use, so such elements cannot be tapped until scrolled
+  /// into view.
+  final bool offscreen;
 
   /// Current runtime value of stateful widgets — `"on"`/`"off"` for
   /// Switch/SwitchListTile, `"checked"`/`"unchecked"`/`"indeterminate"` for
@@ -66,7 +74,9 @@ class ElementRecord {
           },
         if (creationLocation != null) 'creation_location': creationLocation,
         'enabled': enabled,
-        if (proposals.isNotEmpty) 'proposals': proposals.map((p) => p.toJson()).toList(),
+        if (offscreen) 'offscreen': true,
+        if (proposals.isNotEmpty)
+          'proposals': proposals.map((p) => p.toJson()).toList(),
       };
 }
 

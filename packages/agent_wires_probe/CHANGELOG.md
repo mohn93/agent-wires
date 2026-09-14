@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.10
+
+Gesture and targeting fixes surfaced by driving a production cart flow.
+
+- **`swipe` never scrolled.** Synthesized `PointerMoveEvent`s carried the
+  default `delta: Offset.zero`, so drag recognizers never cleared the touch
+  slop and a plain `ListView` under the finger stayed put while `tap` worked
+  fine. Moves now carry the real per-step delta.
+- **`scroll` (no `element_id`) picked a list the user could not see.** The
+  largest-viewport heuristic happily drove the home list buried under a pushed
+  route. Selection now runs the snapshot's occlusion pass and only considers
+  scrollables that are neither hidden nor off-screen; when none qualify it
+  returns `success: false` instead of scrolling hidden content.
+- **`tap` / `long_press` refuse targets outside the viewport.** Dispatching a
+  pointer event whose center lies off-screen "succeeded" silently and nothing
+  happened. Both now return `success: false` with an `outside the viewport ...
+  scroll it into view first` error and the computed `at` point. (A target that
+  is inside the screen but clipped by its own scroll viewport is not detected.)
+- **`snapshot` flags `offscreen: true`** on laid-out elements whose center lies
+  outside the viewport (rows further down a scrollable column) — the same rule
+  the tap guard uses — so an agent can tell "listed" from "tappable".
+- **`wait_for_element` gains `match: "substring"`.** Labels are inferred from
+  descendant text, so callers rarely know the exact string; with
+  `match: substring` a case-insensitive, word-boundary match is accepted
+  ("Domains" finds "Domains · Manage your domains", "OK" does not find
+  "Book now"). The default stays exact. The response now echoes the matched
+  `label` and `match: "exact" | "substring" | "role"`.
+
 ## 0.1.9
 
 Fixes `screenshot` returning a **stale frame** — most visibly "one navigation

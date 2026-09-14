@@ -48,7 +48,10 @@ List<Tool> lifecycleTools(AppSession session) => [
             'on the upper end). Returns the resulting app state and VM '
             'service URI. Idempotent — if already booted, returns '
             'immediately. If a prior boot timed out or was stopped, just '
-            'call boot_app again; it will reset and retry.\n\n'
+            'call boot_app again; it will reset and retry. If app_status '
+            'reports `connection_lost: true`, boot_app reattaches to the '
+            'still-running app (no rebuild) and only reboots when that '
+            'fails.\n\n'
             'DEVICE SELECTION: If more than one device might be available '
             '(plugged-in phone + booted simulator is the classic case), '
             'call `list_devices` first and ASK THE USER which to use; '
@@ -75,22 +78,43 @@ List<Tool> lifecycleTools(AppSession session) => [
               'type': 'string',
               'description':
                   'Device id from `list_devices`. Overrides any default '
-                  'set at MCP registration time. Sticks until the next '
-                  'stop_app. Omit to use whatever was already configured '
-                  '(or let flutter pick).',
+                      'set at MCP registration time. Sticks until the next '
+                      'stop_app. Omit to use whatever was already configured '
+                      '(or let flutter pick).',
             },
             'wait': {
               'type': 'boolean',
               'description':
                   'When false, kick off the boot in the background and '
-                  'return state="booting" immediately so you can poll '
-                  'app_status during a long compile. Default true (block '
-                  'until ready). Use false when you expect the boot to '
-                  'take more than a minute or two.',
+                      'return state="booting" immediately so you can poll '
+                      'app_status during a long compile. Default true (block '
+                      'until ready). Use false when you expect the boot to '
+                      'take more than a minute or two.',
+            },
+            'timeout_minutes': {
+              'type': 'integer',
+              'description':
+                  'How long to wait for `flutter run` to report a VM service '
+                      'URI before giving up (default 10, max 60). Raise it for a '
+                      'cold cache: a first iOS build with pod install can take '
+                      '15+ minutes, and a boot that times out mid-build is '
+                      'killed and must start over. The value '
+                  'sticks for the rest of the session.',
             },
           },
         },
         handler: (args) async {
+          final timeoutMinutes = args['timeout_minutes'];
+          if (timeoutMinutes != null) {
+            if (timeoutMinutes is! num) {
+              return _toolError(
+                  'timeout_minutes must be a number, got $timeoutMinutes');
+            }
+            // Sticks for the rest of the session (a later boot_app without
+            // the argument keeps the raised value).
+            session.bootTimeout =
+                Duration(minutes: timeoutMinutes.clamp(1, 60).toInt());
+          }
           final deviceId = args['device_id'];
           if (deviceId is String && deviceId.isNotEmpty) {
             try {
@@ -141,6 +165,15 @@ List<Tool> lifecycleTools(AppSession session) => [
           final payload = _statusPayload(session);
           final alive = await session.isProbeAlive();
           payload['probe_attached'] = alive;
+          if (session.isConnectionLost) {
+            payload['connection_lost'] = true;
+            payload['hint'] = session.isAttached
+                ? 'The VM-service socket died. This is an attached session '
+                    '(serve --attach), so restart the MCP server against the '
+                    "app's current VM service URI."
+                : 'The VM-service socket died while the app kept running. '
+                    'Call boot_app to reattach; it only rebuilds if that fails.';
+          }
           // When the probe is reachable, report its version and warn if it
           // differs from the version this server pairs with (#6).
           if (alive) {
@@ -177,8 +210,7 @@ List<Tool> lifecycleTools(AppSession session) => [
       ),
       Tool(
         name: 'hot_reload',
-        description:
-            'Re-injects edited Dart sources into the running app and '
+        description: 'Re-injects edited Dart sources into the running app and '
             'reassembles the widget tree. App state and current route are '
             'preserved. Takes ~1–3s.\n\n'
             'USE WHEN: the user has just edited source code and you want to '

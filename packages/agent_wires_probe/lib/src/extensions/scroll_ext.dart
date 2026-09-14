@@ -39,7 +39,14 @@ class ScrollExtension {
         ok = await ScrollDriver.scrollAnyVisible(direction, distance);
       }
       if (!ok) {
-        return _ok({'success': false, 'error': 'no scrollable found or axis mismatch'});
+        return _ok({
+          'success': false,
+          'error': id != null && id.isNotEmpty
+              ? 'no scrollable found in or above $id for that axis'
+              : 'no visible scrollable found for that axis (lists under a '
+                  'pushed route or off-screen are ignored); pass element_id '
+                  'to target one explicitly',
+        });
       }
       final size = currentScreenSize();
       final center = Offset(size.width / 2, size.height / 2);
